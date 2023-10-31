@@ -1,4 +1,4 @@
-package u
+package ursa
 
 // ursa is a zod inspired validation library for Go.
 // Copyright (C) 2023 John Dudmesh

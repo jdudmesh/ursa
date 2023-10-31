@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jdudmesh/pkg/ursa/u"
+	u "github.com/jdudmesh/ursa"
 	"github.com/stretchr/testify/assert"
 )
 

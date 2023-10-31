@@ -1,4 +1,4 @@
-module github.com/jdudmesh/pkg/ursa
+module github.com/jdudmesh/ursa
 
 go 1.21.3
 
