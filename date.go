@@ -26,11 +26,13 @@ type UrsaDateOpt func(u *ursaDate, val time.Time) *parseError
 type UrsaDateParseFunc func(val string) (time.Time, error)
 
 type ursaDate struct {
-	parseFunc UrsaDateParseFunc
-	options   []UrsaDateOpt
+	parseFunc    UrsaDateParseFunc
+	options      []UrsaDateOpt
+	defaultValue time.Time
+	required     bool
 }
 
-func (u *ursaDate) Parse(val any) ParseResult {
+func (u *ursaDate) Parse(val any, opts ...ParseOpt) ParseResult {
 	res := &parseResult[time.Time]{}
 	var typedVal time.Time
 	var err error
@@ -70,26 +72,35 @@ func (u *ursaDate) Parse(val any) ParseResult {
 	return res
 }
 
+func (u *ursaDate) setDefault(val any) {
+	u.defaultValue = val.(time.Time)
+}
+
+func (u *ursaDate) getDefault() any {
+	return u.defaultValue
+}
+
 func (u *ursaDate) WithDateParser(fn UrsaDateParseFunc) {
 	u.parseFunc = fn
 }
 
 func Date(opts ...any) *ursaDate {
-	var parseFunc UrsaDateParseFunc
-	options := make([]UrsaDateOpt, 0, len(opts))
+	u := &ursaDate{
+		options: make([]UrsaDateOpt, 0, len(opts)),
+	}
+
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case UrsaDateOpt:
-			options = append(options, opt)
+			u.options = append(u.options, opt)
 		case UrsaDateParseFunc:
-			parseFunc = opt
+			u.parseFunc = opt
+		case EntityOpt:
+			opt(u)
 		}
 	}
 
-	return &ursaDate{
-		parseFunc: parseFunc,
-		options:   options,
-	}
+	return u
 }
 
 func NotBefore(datum time.Time, message ...string) UrsaDateOpt {

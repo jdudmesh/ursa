@@ -16,14 +16,24 @@ package ursa
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+type EntityOpt func(u ursaEntity) error
+type ParseOpt func(res ParseResult) error
+
+type ursaEntityBase[T any] struct {
+	defaultValue T
+	required     bool
+}
+
 type ursaEntity interface {
-	Parse(val any) ParseResult
+	Parse(val any, opts ...ParseOpt) ParseResult
 }
 
 type ParseResult interface {
 	Valid() bool
 	Errors() []ParseError
 	Value() interface{}
+	Name() string
+	AppendError(message string, inner ...error)
 }
 
 type ParseError interface {
@@ -34,7 +44,7 @@ type ParseError interface {
 type parseResult[T any] struct {
 	valid  bool
 	value  T
-	field  string
+	name   string
 	errors []ParseError
 }
 
@@ -46,8 +56,15 @@ func (r *parseResult[T]) Errors() []ParseError {
 	return r.errors
 }
 
-func (r *parseResult[T]) Field() string {
-	return r.field
+func (r *parseResult[T]) AppendError(message string, inner ...error) {
+	r.errors = append(r.errors, &parseError{
+		message: message,
+		inner:   inner,
+	})
+}
+
+func (r *parseResult[T]) Name() string {
+	return r.name
 }
 
 func (r *parseResult[T]) Value() interface{} {
@@ -69,4 +86,48 @@ func (e *parseError) Error() string {
 
 var UrsaInvalidTypeError = &parseError{
 	message: "invalid type",
+}
+
+func WithDefault(val any) EntityOpt {
+	return func(u ursaEntity) error {
+		u.setDefault(val)
+		return nil
+	}
+}
+
+func WithRequired() EntityOpt {
+	return func(u *ursaEntityBase[T]) error {
+		u.setRequired()
+		return nil
+	}
+}
+
+func (b *ursaEntityBase[T]) setDefault(val T) {
+	b.defaultValue = val
+}
+
+func (b *ursaEntityBase[T]) getDefault() T {
+	return b.defaultValue
+}
+
+func (b *ursaEntityBase[T]) setRequired() {
+	b.required = true
+}
+
+func (b *ursaEntityBase[T]) getRequired() bool {
+	return b.required
+}
+
+type ursaValidator[T any] struct {
+	options      []UrsaValidatorOpt[T]
+	defaultValue T
+	required     bool
+}
+
+type UrsaValidatorOpt[T any] func(u *ursaValidator[T], val T) *parseError
+
+type UrsaStringValidatorOpt = UrsaValidatorOpt[string]
+
+type ursaStringValidator struct {
+	validator ursaValidator[string]
 }

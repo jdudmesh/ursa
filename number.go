@@ -30,6 +30,8 @@ type UrsaNumberOpt func(u *ursaNumber, val any) *parseError
 type ursaNumber struct {
 	typeConstraint numberType
 	options        []UrsaNumberOpt
+	defaultValue   any
+	required       bool
 }
 
 type NumberType interface {
@@ -101,14 +103,23 @@ func Float64() numberType {
 	return &numberTypeConstraint[float64]{}
 }
 
-func Number(constraint numberType, opts ...UrsaNumberOpt) *ursaNumber {
-	return &ursaNumber{
+func Number(constraint numberType, opts ...any) *ursaNumber {
+	u := &ursaNumber{
 		typeConstraint: constraint,
-		options:        opts,
+		options:        make([]UrsaNumberOpt, 0, len(opts)),
 	}
+	for _, opt := range opts {
+		switch opt := opt.(type) {
+		case UrsaNumberOpt:
+			u.options = append(u.options, opt)
+		case EntityOpt:
+			opt(u)
+		}
+	}
+	return u
 }
 
-func (u *ursaNumber) Parse(val any) ParseResult {
+func (u *ursaNumber) Parse(val any, opts ...ParseOpt) ParseResult {
 	if v, ok := val.(string); ok {
 		floatVal, err := strconv.ParseFloat(v, 64)
 		if err != nil {
@@ -130,6 +141,14 @@ func (u *ursaNumber) Parse(val any) ParseResult {
 	}
 
 	return u.typeConstraint.NewParseResult(val, errs...)
+}
+
+func (u *ursaNumber) setDefault(val any) {
+	u.defaultValue = val
+}
+
+func (u *ursaNumber) getDefault() any {
+	return u.defaultValue
 }
 
 func Min(min float64, message ...string) UrsaNumberOpt {

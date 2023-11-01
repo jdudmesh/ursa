@@ -25,18 +25,20 @@ import (
 	"strings"
 )
 
-type UrsaObjectOpt func(u *ursaObject, val any) ParseResult
+type UrsaObjectOpt func(u *ursaObject, val any) *parseResult[interface{}]
 type UrsaObjectFieldDefiner func() (string, UrsaObjectOpt)
 
 var ErrFieldAlreadyDefined = parseError{message: "field already defined"}
 var ErrUnsupportedContentType = parseError{message: "unsupported content type"}
 
+type objectParseValue map[string]*parseResult[interface{}]
+
 type ursaObject struct {
-	fields      map[string]UrsaObjectOpt
+	validators  map[string]UrsaObjectOpt
 	maxBodySize int64
 }
 
-func (u *ursaObject) Parse(val any) ParseResult {
+func (u *ursaObject) Parse(val any, opts ...ParseOpt) ParseResult {
 	switch val := val.(type) {
 	case []byte:
 		return u.parseJSON(val)
@@ -44,20 +46,18 @@ func (u *ursaObject) Parse(val any) ParseResult {
 		return u.parseRequest(val)
 	}
 
-	res := &parseResult[interface{}]{}
-	output := make(map[string]interface{})
-	for name, validator := range u.fields {
-		inner := validator(u, val)
-		if !inner.Valid() {
-			res.errors = append(res.errors, inner.Errors()...)
-			continue
-		}
-		output[name] = inner.Value()
+	res := &parseResult[objectParseValue]{
+		valid: true,
+		value: make(objectParseValue),
 	}
 
-	res.valid = len(res.errors) == 0
-	if res.valid {
-		res.value = output
+	for _, opt := range opts {
+		opt(res)
+	}
+
+	for name, validator := range u.validators {
+		fieldResult := validator(u, val)
+		res.value[name] = fieldResult
 	}
 
 	return res
@@ -139,33 +139,33 @@ func (u *ursaObject) readForm(form url.Values) map[string]interface{} {
 	return output
 }
 
-func (u *ursaObject) String(name string, opts ...UrsaStringOpt) *ursaObject {
+func (u *ursaObject) String(name string, opts ...any) *ursaObject {
 	n, opt := Field(name, String(opts...))()
-	u.fields[n] = opt
+	u.validators[n] = opt
 	return u
 }
 
-func (u *ursaObject) Number(name string, ntype numberType, opts ...UrsaNumberOpt) *ursaObject {
+func (u *ursaObject) Number(name string, ntype numberType, opts ...any) *ursaObject {
 	n, opt := Field(name, Number(ntype, opts...))()
-	u.fields[n] = opt
+	u.validators[n] = opt
 	return u
 }
 
-func (u *ursaObject) Date(name string, opts ...UrsaDateOpt) *ursaObject {
+func (u *ursaObject) Date(name string, opts ...any) *ursaObject {
 	n, opt := Field(name, Date(opts))()
-	u.fields[n] = opt
+	u.validators[n] = opt
 	return u
 }
 
-func (u *ursaObject) UUID(name string, opts ...UrsaUUIDOpt) *ursaObject {
+func (u *ursaObject) UUID(name string, opts ...any) *ursaObject {
 	n, opt := Field(name, UUID(opts...))()
-	u.fields[n] = opt
+	u.validators[n] = opt
 	return u
 }
 
 func Object(opts ...any) *ursaObject {
 	u := &ursaObject{
-		fields:      map[string]UrsaObjectOpt{},
+		validators:  map[string]UrsaObjectOpt{},
 		maxBodySize: 1024 * 1024 * 10,
 	}
 	for _, opt := range opts {
@@ -174,7 +174,7 @@ func Object(opts ...any) *ursaObject {
 			opt(u, nil)
 		case UrsaObjectFieldDefiner:
 			name, fn := opt()
-			u.fields[name] = fn
+			u.validators[name] = fn
 		}
 	}
 	return u
@@ -182,17 +182,17 @@ func Object(opts ...any) *ursaObject {
 
 func Field(name string, validator ursaEntity) UrsaObjectFieldDefiner {
 	return func() (string, UrsaObjectOpt) {
-		return name, func(u *ursaObject, val any) ParseResult {
+		return name, func(u *ursaObject, val any) *parseResult[interface{}] {
 			s := reflect.ValueOf(val)
 			switch {
 			case s.Kind() == reflect.Ptr:
 				deref := reflect.Indirect(s)
 				if !(deref.Kind() == reflect.Struct || deref.Kind() == reflect.Map) {
-					return &parseResult[interface{}]{errors: []ParseError{UrsaInvalidTypeError}}
+					return &parseResult[interface{}]{valid: false, errors: []ParseError{UrsaInvalidTypeError}}
 				}
 				s = deref
 			case !(s.Kind() == reflect.Struct || s.Kind() == reflect.Map):
-				return &parseResult[interface{}]{errors: []ParseError{UrsaInvalidTypeError}}
+				return &parseResult[interface{}]{valid: false, errors: []ParseError{UrsaInvalidTypeError}}
 			}
 
 			var value reflect.Value
@@ -202,24 +202,25 @@ func Field(name string, validator ursaEntity) UrsaObjectFieldDefiner {
 			case reflect.Map:
 				value = s.MapIndex(reflect.ValueOf(name))
 			}
+
 			if !value.IsValid() {
-				return &parseResult[interface{}]{field: name, errors: []ParseError{&parseError{message: "not found"}}}
+				if d := validator.getDefault(); d != nil {
+					return &parseResult[interface{}]{valid: true, value: d}
+				}
+				if validator.getRequired() {
+					return &parseResult[interface{}]{valid: false, errors: []ParseError{UrsaInvalidTypeError}}
+				}
 			}
 
 			inner := validator.Parse(value.Interface())
 
-			return &parseResult[interface{}]{
-				valid:  inner.Valid(),
-				value:  inner.Value(),
-				field:  name,
-				errors: inner.Errors(),
-			}
+			return &parseResult[interface{}]{valid: inner.Valid(), value: inner.Value(), errors: inner.Errors()}
 		}
 	}
 }
 
 func WithMaxBodySize(size int64) UrsaObjectOpt {
-	return func(u *ursaObject, val any) ParseResult {
+	return func(u *ursaObject, val any) *parseResult[interface{}] {
 		u.maxBodySize = size
 		return nil
 	}

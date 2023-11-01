@@ -134,3 +134,17 @@ func TestObjectHTTP(t *testing.T) {
 		assert.Equal(0, len(errs))
 	})
 }
+
+func TestObjectMissingField(t *testing.T) {
+	assert := assert.New(t)
+
+	v := u.Object().
+		String("Name", u.MinLength(5, "String should be at least 5 characters")).
+		Number("Count", u.Int(), u.WithDefault(5))
+
+	errs := v.Parse(map[string]string{
+		"Name": "abcdefgh",
+	}).Errors()
+	assert.Equal(0, len(errs))
+
+}

@@ -24,10 +24,12 @@ import (
 type UrsaStringOpt func(u *ursaString, val string) *parseError
 
 type ursaString struct {
-	options []UrsaStringOpt
+	options      []UrsaStringOpt
+	defaultValue string
+	required     bool
 }
 
-func (u *ursaString) Parse(val any) ParseResult {
+func (u *ursaString) Parse(val any, opts ...ParseOpt) ParseResult {
 	res := &parseResult[string]{}
 
 	if _, ok := val.(string); !ok {
@@ -51,10 +53,27 @@ func (u *ursaString) Parse(val any) ParseResult {
 	return res
 }
 
-func String(opts ...UrsaStringOpt) *ursaString {
-	return &ursaString{
-		options: opts,
+func (u *ursaString) setDefault(val any) {
+	u.defaultValue = val.(string)
+}
+
+func (u *ursaString) getDefault() any {
+	return u.defaultValue
+}
+
+func String(opts ...any) *ursaString {
+	u := &ursaString{
+		options: make([]UrsaStringOpt, 0, len(opts)),
 	}
+	for _, opt := range opts {
+		switch opt := opt.(type) {
+		case UrsaStringOpt:
+			u.options = append(u.options, opt)
+		case EntityOpt:
+			opt(u)
+		}
+	}
+	return u
 }
 
 func MinLength(min int, message ...string) UrsaStringOpt {
@@ -107,5 +126,16 @@ func Email(patt string, message ...string) UrsaStringOpt {
 			return &parseError{message: "invalid email address", inner: []error{err}}
 		}
 		return nil
+	}
+}
+
+func Enum(values ...string) UrsaStringOpt {
+	return func(u *ursaString, val string) *parseError {
+		for _, v := range values {
+			if v == val {
+				return nil
+			}
+		}
+		return &parseError{message: "value not found in enum", inner: []error{}}
 	}
 }

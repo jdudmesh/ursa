@@ -23,10 +23,12 @@ import (
 type UrsaUUIDOpt func(u *ursaUUID, val uuid.UUID) *parseError
 
 type ursaUUID struct {
-	options []UrsaUUIDOpt
+	options      []UrsaUUIDOpt
+	defaultValue uuid.UUID
+	required     bool
 }
 
-func (u *ursaUUID) Parse(val any) ParseResult {
+func (u *ursaUUID) Parse(val any, opts ...ParseOpt) ParseResult {
 	var err error
 	res := &parseResult[uuid.UUID]{}
 
@@ -62,10 +64,27 @@ func (u *ursaUUID) Parse(val any) ParseResult {
 	return res
 }
 
-func UUID(opts ...UrsaUUIDOpt) *ursaUUID {
-	return &ursaUUID{
-		options: opts,
+func (u *ursaUUID) setDefault(val any) {
+	u.defaultValue = val.(uuid.UUID)
+}
+
+func (u *ursaUUID) getDefault() any {
+	return u.defaultValue
+}
+
+func UUID(opts ...any) *ursaUUID {
+	u := &ursaUUID{
+		options: make([]UrsaUUIDOpt, 0, len(opts)),
 	}
+	for _, opt := range opts {
+		switch opt := opt.(type) {
+		case UrsaUUIDOpt:
+			u.options = append(u.options, opt)
+		case EntityOpt:
+			opt(u)
+		}
+	}
+	return u
 }
 
 func NonNullUUID(message ...string) UrsaUUIDOpt {
