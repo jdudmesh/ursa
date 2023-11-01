@@ -1,5 +1,7 @@
 package ursa
 
+import "reflect"
+
 // ursa is a zod inspired validation library for Go.
 // Copyright (C) 2023 John Dudmesh
 
@@ -16,23 +18,12 @@ package ursa
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-type EntityOpt func(u ursaEntity) error
 type ParseOpt func(res ParseResult) error
-
-type ursaEntityBase[T any] struct {
-	defaultValue T
-	required     bool
-}
-
-type ursaEntity interface {
-	Parse(val any, opts ...ParseOpt) ParseResult
-}
 
 type ParseResult interface {
 	Valid() bool
 	Errors() []ParseError
 	Value() interface{}
-	Name() string
 	AppendError(message string, inner ...error)
 }
 
@@ -44,7 +35,6 @@ type ParseError interface {
 type parseResult[T any] struct {
 	valid  bool
 	value  T
-	name   string
 	errors []ParseError
 }
 
@@ -61,10 +51,6 @@ func (r *parseResult[T]) AppendError(message string, inner ...error) {
 		message: message,
 		inner:   inner,
 	})
-}
-
-func (r *parseResult[T]) Name() string {
-	return r.name
 }
 
 func (r *parseResult[T]) Value() interface{} {
@@ -84,50 +70,225 @@ func (e *parseError) Error() string {
 	return e.message
 }
 
-var UrsaInvalidTypeError = &parseError{
+var InvalidTypeError = &parseError{
 	message: "invalid type",
 }
 
-func WithDefault(val any) EntityOpt {
-	return func(u ursaEntity) error {
-		u.setDefault(val)
-		return nil
+var InvalidValueError = &parseError{
+	message: "invalid value",
+}
+
+var InvalidValidatorStateError = &parseError{
+	message: "invalid type",
+}
+
+var RequiredPropertyMissingError = &parseError{
+	message: "missing required property",
+}
+
+var MissingTransformerError = &parseError{
+	message: "missing property transformer",
+}
+
+type validatorOpt[T any] func(val T) *parseError
+type transformer[T any] func(val any) (T, error)
+
+type validator[T any] struct {
+	transformerFn transformer[T]
+	options       []validatorOpt[T]
+	defaultValue  *T
+	required      bool
+	err           error
+}
+
+func (v *validator[T]) Parse(val any, opts ...ParseOpt) ParseResult {
+	res := &parseResult[T]{}
+	if v.err != nil {
+		res.errors = []ParseError{InvalidValidatorStateError}
+		return res
+	}
+
+	typedVal, err := v.convert(val)
+	if err != nil {
+		res.errors = []ParseError{err}
+		return res
+	}
+
+	if typedVal == nil {
+		res.valid = true
+		return res
+	}
+
+	for _, opt := range v.options {
+		err := opt(*typedVal)
+		if err != nil {
+			res.errors = append(res.errors, err)
+		}
+	}
+
+	res.valid = len(res.errors) == 0
+	if res.valid {
+		res.value = *typedVal
+	}
+
+	return res
+}
+
+func (v *validator[T]) convert(val any) (*T, *parseError) {
+	var typedVal T
+	var err error
+
+	vo := reflect.ValueOf(val)
+	switch vo.Kind() {
+	case reflect.Ptr:
+		vo = vo.Elem()
+	case reflect.Invalid:
+		if val == nil {
+			if v.defaultValue != nil {
+				return v.convert(v.defaultValue)
+			}
+			if v.required {
+				return nil, RequiredPropertyMissingError
+			}
+			return nil, nil
+		}
+	}
+
+	if vo.Kind() != reflect.TypeOf(typedVal).Kind() {
+		if reflect.TypeOf(val).ConvertibleTo(reflect.TypeOf(typedVal)) {
+			if v, ok := reflect.ValueOf(val).Convert(reflect.TypeOf(typedVal)).Interface().(T); ok {
+				typedVal = v
+			} else {
+				return nil, InvalidTypeError
+			}
+		} else {
+			if v.transformerFn == nil {
+				return nil, MissingTransformerError
+			}
+
+			typedVal, err = v.transformerFn(val)
+			if err != nil {
+				return nil, &parseError{message: err.Error()}
+			}
+		}
+
+	} else {
+		typedVal = vo.Interface().(T)
+	}
+
+	return &typedVal, nil
+}
+
+func (b *validator[T]) setTransformer(fn transformer[any]) {
+	b.transformerFn = func(val any) (T, error) {
+		var zero T
+
+		val, err := fn(val)
+		if err != nil {
+			return zero, InvalidValueError
+		}
+
+		if !reflect.TypeOf(val).ConvertibleTo(reflect.TypeOf(zero)) {
+			return zero, InvalidTypeError
+		}
+		vo := reflect.ValueOf(val)
+		val = vo.Convert(reflect.TypeOf(zero)).Interface().(T)
+		return val.(T), err
 	}
 }
 
-func WithRequired() EntityOpt {
-	return func(u *ursaEntityBase[T]) error {
-		u.setRequired()
-		return nil
+func (b *validator[T]) setDefault(val any) {
+	var zero T
+	if !reflect.TypeOf(val).ConvertibleTo(reflect.TypeOf(zero)) {
+		b.err = InvalidTypeError
+		return
 	}
+
+	vo := reflect.ValueOf(val)
+	if vo.Kind() == reflect.Ptr {
+		vo = vo.Elem()
+	}
+
+	if vo.Kind() == reflect.Invalid {
+		b.err = InvalidTypeError
+		return
+	}
+
+	d := vo.Convert(reflect.TypeOf(zero)).Interface().(T)
+
+	b.defaultValue = &d
 }
 
-func (b *ursaEntityBase[T]) setDefault(val T) {
-	b.defaultValue = val
-}
-
-func (b *ursaEntityBase[T]) getDefault() T {
-	return b.defaultValue
-}
-
-func (b *ursaEntityBase[T]) setRequired() {
+func (b *validator[T]) setRequired() {
 	b.required = true
 }
 
-func (b *ursaEntityBase[T]) getRequired() bool {
+func (b *validator[T]) getRequired() bool {
 	return b.required
 }
 
-type ursaValidator[T any] struct {
-	options      []UrsaValidatorOpt[T]
-	defaultValue T
-	required     bool
+func (b *validator[T]) Error() error {
+	return b.err
 }
 
-type UrsaValidatorOpt[T any] func(u *ursaValidator[T], val T) *parseError
+func (b *validator[T]) Type() reflect.Type {
+	var zero T
+	return reflect.TypeOf(zero)
+}
 
-type UrsaStringValidatorOpt = UrsaValidatorOpt[string]
+type genericValidator interface {
+	Parse(val any, opts ...ParseOpt) ParseResult
+	Error() error
+	Type() reflect.Type
+}
 
-type ursaStringValidator struct {
-	validator ursaValidator[string]
+type genericValidatorOptReceiver interface {
+	setTransformer(fn transformer[any])
+	setDefault(val any)
+	setRequired()
+}
+
+type validatorWithOpts interface {
+	genericValidator
+	genericValidatorOptReceiver
+}
+
+type genericValidatorOpt func(v genericValidatorOptReceiver) error
+
+func WithDefault(val any) genericValidatorOpt {
+	return func(v genericValidatorOptReceiver) error {
+		v.setDefault(val)
+		return nil
+	}
+}
+
+func WithRequired() genericValidatorOpt {
+	return func(v genericValidatorOptReceiver) error {
+		v.setRequired()
+		return nil
+	}
+}
+
+func isNilable(i interface{}) bool {
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Slice:
+		return true
+	default:
+		return false
+	}
+}
+
+func newGenerator[T any](opts ...any) validatorWithOpts {
+	v := &validator[T]{
+		options: make([]validatorOpt[T], 0, len(opts)),
+	}
+	for _, opt := range opts {
+		switch opt := opt.(type) {
+		case validatorOpt[T]:
+			v.options = append(v.options, opt)
+		case genericValidatorOpt:
+			opt(v)
+		}
+	}
+	return v
 }

@@ -30,12 +30,16 @@ import (
 func TestObject(t *testing.T) {
 	assert := assert.New(t)
 
-	v := u.Object(
-		u.Field("Name", u.String(u.MinLength(5, "String should be at least 5 characters"))),
-	)
+	v := u.Object().
+		String("Name", u.MinLength(5, "String should be at least 5 characters")).
+		Number("Count", u.Int())
 
-	errs := v.Parse(map[string]string{
-		"Name": "abcdefgh",
+	errs := v.Parse(&struct {
+		Name  string
+		Count int
+	}{
+		Name:  "abcdef",
+		Count: 5,
 	}).Errors()
 	assert.Equal(0, len(errs))
 
@@ -55,23 +59,7 @@ func TestObject(t *testing.T) {
 	// assert.ErrorAs(errs[0], &errState)
 	// assert.Equal("Name", errState.Field())
 	// assert.Equal("not found", errState.Error())
-}
 
-func TestObjectAltSyntax(t *testing.T) {
-	assert := assert.New(t)
-
-	v := u.Object().
-		String("Name", u.MinLength(5, "String should be at least 5 characters")).
-		Number("Count", u.Int())
-
-	errs := v.Parse(&struct {
-		Name  string
-		Count int
-	}{
-		Name:  "abcdef",
-		Count: 5,
-	}).Errors()
-	assert.Equal(0, len(errs))
 }
 
 func TestObjectJSON(t *testing.T) {

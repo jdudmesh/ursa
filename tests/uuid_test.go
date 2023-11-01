@@ -17,45 +17,35 @@ package tests
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
 	u "github.com/jdudmesh/ursa"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNumber(t *testing.T) {
+func TestUUID(t *testing.T) {
 	assert := assert.New(t)
 
-	v := u.Number(
-		u.Int(),
-		u.WithStringTransformer(),
-		u.MustBeInteger(),
-		u.Min(5, "Number should be >= 5"),
-		u.Max(10))
+	v := u.UUID(u.NonNullUUID())
 
-	res := v.Parse(7)
-	assert.Equal(true, res.Valid())
+	u := uuid.New()
+	fmt.Println(u.String())
+	res := v.Parse(u)
+	assert.True(res.Valid())
+	assert.Equal(u, res.Value().(uuid.UUID))
 
-	res = v.Parse("7")
-	assert.Equal(true, res.Valid())
+	res = v.Parse(u.String())
+	assert.True(res.Valid())
 
-	errs := v.Parse("ursa").Errors()
-	assert.Equal(1, len(errs))
-	assert.EqualError(errs[0], u.InvalidValueError.Error())
+	sz := "not a uuid"
+	res = v.Parse(sz)
+	assert.False(res.Valid())
 
-	errs = v.Parse(3.14).Errors()
-	assert.Equal(errs[0].Error(), "Number should be >= 5")
-
-	errs = v.Parse(1).Errors()
-	assert.Equal(errs[0].Error(), "Number should be >= 5")
-
-	errs = v.Parse(100).Errors()
-	assert.Equal(errs[0].Error(), "number too large")
-
-	u2 := u.Number(
-		u.Int16(),
-		u.NonZero())
-
-	errs = u2.Parse(0).Errors()
-	assert.Equal(errs[0].Error(), "number is uero")
+	//uuid.MustParse("00000000-0000-0000-0000-000000000000")
+	sz = "00000000-0000-0000-0000-000000000000"
+	res = v.Parse(sz)
+	assert.False(res.Valid())
+	assert.Equal("uuid is zero", res.Errors()[0].Error())
 }

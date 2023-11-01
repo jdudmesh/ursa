@@ -30,9 +30,10 @@ func TestDate(t *testing.T) {
 	dt := time.Now()
 	szdt := dt.Format(time.RFC3339)
 
-	v := u.Date(
+	v := u.Time(
 		u.NotBefore(dt.Add(-1*time.Hour)),
 		u.NotAfter(dt.Add(1*time.Hour)),
+		u.WithTimeFormat(time.RFC3339),
 	)
 
 	errs := v.Parse(dt).Errors()
@@ -40,14 +41,6 @@ func TestDate(t *testing.T) {
 
 	errs = v.Parse(&dt).Errors()
 	assert.Equal(0, len(errs))
-
-	errs = v.Parse(szdt).Errors()
-	assert.Equal(1, len(errs))
-	assert.ErrorIs(errs[0], u.ErrMissingDateParser)
-
-	v.WithDateParser(func(val string) (time.Time, error) {
-		return time.Parse(time.RFC3339, val)
-	})
 
 	errs = v.Parse(szdt).Errors()
 	assert.Equal(0, len(errs))
@@ -59,4 +52,20 @@ func TestDate(t *testing.T) {
 	errs = v.Parse(dt.Add(2 * time.Hour)).Errors()
 	assert.Equal(1, len(errs))
 	assert.Equal(errs[0].Error(), "date is too late")
+}
+
+func TestDateMissingParser(t *testing.T) {
+	assert := assert.New(t)
+
+	dt := time.Now()
+	szdt := dt.Format(time.RFC3339)
+
+	v := u.Time(
+		u.NotBefore(dt.Add(-1*time.Hour)),
+		u.NotAfter(dt.Add(1*time.Hour)),
+	)
+
+	errs := v.Parse(szdt).Errors()
+	assert.Equal(1, len(errs))
+	assert.ErrorIs(errs[0], u.MissingTransformerError)
 }

@@ -17,78 +17,35 @@ package ursa
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import (
+	"reflect"
+
 	"github.com/google/uuid"
 )
 
-type UrsaUUIDOpt func(u *ursaUUID, val uuid.UUID) *parseError
+type uuidValidatorOpt = validatorOpt[uuid.UUID]
 
-type ursaUUID struct {
-	options      []UrsaUUIDOpt
-	defaultValue uuid.UUID
-	required     bool
+func UUID(opts ...any) genericValidator {
+	v := newGenerator[uuid.UUID](opts...)
+	v.setTransformer(func(val any) (any, error) {
+		return coerceToUUID(val)
+	})
+	return v
 }
 
-func (u *ursaUUID) Parse(val any, opts ...ParseOpt) ParseResult {
-	var err error
-	res := &parseResult[uuid.UUID]{}
-
-	typedVal := uuid.UUID{}
-	switch val := val.(type) {
-	case uuid.UUID:
-		typedVal = val
-	case *uuid.UUID:
-		if val != nil {
-			typedVal = *val
-		}
-	case string:
-		typedVal, err = uuid.Parse(val)
-		if err != nil {
-			res.valid = false
-			res.errors = append(res.errors, UrsaInvalidTypeError)
-			return res
-		}
+func coerceToUUID(val any) (uuid.UUID, error) {
+	vo := reflect.ValueOf(val)
+	if vo.Kind() == reflect.Ptr {
+		vo = vo.Elem()
+		return coerceToUUID(vo.Interface())
 	}
-
-	for _, opt := range u.options {
-		err := opt(u, typedVal)
-		if err != nil {
-			res.errors = append(res.errors, err)
-		}
+	if vo.Kind() != reflect.String {
+		return uuid.Nil, InvalidValueError
 	}
-
-	res.valid = len(res.errors) == 0
-	if res.valid {
-		res.value = typedVal
-	}
-
-	return res
+	return uuid.Parse(val.(string))
 }
 
-func (u *ursaUUID) setDefault(val any) {
-	u.defaultValue = val.(uuid.UUID)
-}
-
-func (u *ursaUUID) getDefault() any {
-	return u.defaultValue
-}
-
-func UUID(opts ...any) *ursaUUID {
-	u := &ursaUUID{
-		options: make([]UrsaUUIDOpt, 0, len(opts)),
-	}
-	for _, opt := range opts {
-		switch opt := opt.(type) {
-		case UrsaUUIDOpt:
-			u.options = append(u.options, opt)
-		case EntityOpt:
-			opt(u)
-		}
-	}
-	return u
-}
-
-func NonNullUUID(message ...string) UrsaUUIDOpt {
-	return func(u *ursaUUID, val uuid.UUID) *parseError {
+func NonNullUUID(message ...string) uuidValidatorOpt {
+	return func(val uuid.UUID) *parseError {
 		for _, v := range val {
 			if v > 0 {
 				return nil
@@ -97,6 +54,6 @@ func NonNullUUID(message ...string) UrsaUUIDOpt {
 		if len(message) > 0 {
 			return &parseError{message: message[0]}
 		}
-		return &parseError{message: "string too short"}
+		return &parseError{message: "uuid is zero"}
 	}
 }

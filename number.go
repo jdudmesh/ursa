@@ -1,5 +1,13 @@
 package ursa
 
+import (
+	"math"
+	"reflect"
+	"strconv"
+
+	"golang.org/x/exp/constraints"
+)
+
 // ursa is a zod inspired validation library for Go.
 // Copyright (C) 2023 John Dudmesh
 
@@ -16,145 +24,78 @@ package ursa
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import (
-	"cmp"
-	"math"
-	"reflect"
-	"strconv"
+type numberValidatorOpt = validatorOpt[float64]
+type numberValidatorGenerator func(opts ...any) genericValidator
 
-	"golang.org/x/exp/constraints"
-)
-
-type UrsaNumberOpt func(u *ursaNumber, val any) *parseError
-
-type ursaNumber struct {
-	typeConstraint numberType
-	options        []UrsaNumberOpt
-	defaultValue   any
-	required       bool
+func Number(generatorFn numberValidatorGenerator, opts ...any) genericValidator {
+	v := generatorFn(opts...)
+	return v
 }
 
-type NumberType interface {
-	constraints.Integer | constraints.Float
-	comparable
-	cmp.Ordered
-}
-
-type numberType interface {
-	IsValid(val any) bool
-	NewParseResult(value any, errs ...ParseError) ParseResult
-}
-
-type numberTypeConstraint[T NumberType] struct{}
-
-func (u numberTypeConstraint[T]) IsValid(val any) bool {
-	var zero T
-	return reflect.TypeOf(val).ConvertibleTo(reflect.TypeOf(zero))
-}
-
-func (u numberTypeConstraint[T]) NewParseResult(value any, errs ...ParseError) ParseResult {
-	var zero T
-	v := reflect.ValueOf(value).Convert(reflect.TypeOf(zero))
-	res := &parseResult[T]{
-		value:  v.Interface().(T),
-		errors: errs,
-		valid:  len(errs) == 0,
+func optWrapper[T any](fn numberValidatorOpt) validatorOpt[T] {
+	return func(val T) *parseError {
+		n := reflect.ValueOf(val).Convert(reflect.TypeOf(0.0)).Interface().(float64)
+		return fn(n)
 	}
-	return res
 }
 
-func Int() numberType {
-	return &numberTypeConstraint[int]{}
-}
-
-func Int16() numberType {
-	return &numberTypeConstraint[int16]{}
-}
-
-func Int32() numberType {
-	return &numberTypeConstraint[int32]{}
-}
-
-func Int64() numberType {
-	return &numberTypeConstraint[int64]{}
-}
-
-func Uint() numberType {
-	return &numberTypeConstraint[uint]{}
-}
-
-func Uint16() numberType {
-	return &numberTypeConstraint[uint16]{}
-}
-
-func Uint32() numberType {
-	return &numberTypeConstraint[uint32]{}
-}
-
-func Uint64() numberType {
-	return &numberTypeConstraint[uint64]{}
-}
-
-func Float32() numberType {
-	return &numberTypeConstraint[float32]{}
-}
-
-func Float64() numberType {
-	return &numberTypeConstraint[float64]{}
-}
-
-func Number(constraint numberType, opts ...any) *ursaNumber {
-	u := &ursaNumber{
-		typeConstraint: constraint,
-		options:        make([]UrsaNumberOpt, 0, len(opts)),
-	}
-	for _, opt := range opts {
-		switch opt := opt.(type) {
-		case UrsaNumberOpt:
-			u.options = append(u.options, opt)
-		case EntityOpt:
-			opt(u)
+func numberValidator[T constraints.Integer | constraints.Signed | constraints.Unsigned | constraints.Float]() numberValidatorGenerator {
+	return func(opts ...any) genericValidator {
+		wrappedOpts := make([]any, len(opts))
+		for i, opt := range opts {
+			if fn, ok := opt.(numberValidatorOpt); ok {
+				wrappedOpts[i] = optWrapper[T](fn)
+			} else {
+				wrappedOpts[i] = opt
+			}
 		}
+		return newGenerator[T](wrappedOpts...)
 	}
-	return u
 }
 
-func (u *ursaNumber) Parse(val any, opts ...ParseOpt) ParseResult {
-	if v, ok := val.(string); ok {
-		floatVal, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return u.typeConstraint.NewParseResult(0, UrsaInvalidTypeError)
-		}
-		return u.Parse(floatVal)
-	}
-
-	if !u.typeConstraint.IsValid(val) {
-		return u.typeConstraint.NewParseResult(0, UrsaInvalidTypeError)
-	}
-
-	errs := make([]ParseError, 0)
-	for _, opt := range u.options {
-		err := opt(u, val)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return u.typeConstraint.NewParseResult(val, errs...)
+func Int() numberValidatorGenerator {
+	return numberValidator[int]()
 }
 
-func (u *ursaNumber) setDefault(val any) {
-	u.defaultValue = val
+func Int16() numberValidatorGenerator {
+	return numberValidator[int16]()
 }
 
-func (u *ursaNumber) getDefault() any {
-	return u.defaultValue
+func Int32() numberValidatorGenerator {
+	return numberValidator[int32]()
 }
 
-func Min(min float64, message ...string) UrsaNumberOpt {
-	return func(u *ursaNumber, val any) *parseError {
-		v := reflect.ValueOf(val).Convert(reflect.TypeOf(0.0)).Interface().(float64)
-		if v < min {
+func Int64() numberValidatorGenerator {
+	return numberValidator[int64]()
+}
+
+func Uint() numberValidatorGenerator {
+	return numberValidator[uint]()
+}
+
+func Uint16() numberValidatorGenerator {
+	return numberValidator[uint16]()
+}
+
+func Uint32() numberValidatorGenerator {
+	return numberValidator[uint32]()
+}
+
+func Uint64() numberValidatorGenerator {
+	return numberValidator[uint64]()
+}
+
+func Float32() numberValidatorGenerator {
+	return numberValidator[float32]()
+}
+
+func Float64() numberValidatorGenerator {
+	return numberValidator[float64]()
+}
+
+func Min(min float64, message ...string) numberValidatorOpt {
+	return func(val float64) *parseError {
+		if val < min {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
@@ -164,10 +105,9 @@ func Min(min float64, message ...string) UrsaNumberOpt {
 	}
 }
 
-func Max(max float64, message ...string) UrsaNumberOpt {
-	return func(u *ursaNumber, val any) *parseError {
-		v := reflect.ValueOf(val).Convert(reflect.TypeOf(0.0)).Interface().(float64)
-		if v > max {
+func Max(max float64, message ...string) numberValidatorOpt {
+	return func(val float64) *parseError {
+		if val > max {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
@@ -177,10 +117,9 @@ func Max(max float64, message ...string) UrsaNumberOpt {
 	}
 }
 
-func NonZero(message ...string) UrsaNumberOpt {
-	return func(u *ursaNumber, val any) *parseError {
-		v := reflect.ValueOf(val).Convert(reflect.TypeOf(0.0)).Interface().(float64)
-		if v == 0 {
+func NonZero(message ...string) numberValidatorOpt {
+	return func(val float64) *parseError {
+		if val == 0 {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
@@ -190,15 +129,35 @@ func NonZero(message ...string) UrsaNumberOpt {
 	}
 }
 
-func MustBeInteger(message ...string) UrsaNumberOpt {
-	return func(u *ursaNumber, val any) *parseError {
-		v := reflect.ValueOf(val).Convert(reflect.TypeOf(0.0)).Interface().(float64)
-		if v != math.Floor(v) {
+func MustBeInteger(message ...string) numberValidatorOpt {
+	return func(val float64) *parseError {
+		if val != math.Floor(val) {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
 			return &parseError{message: "number is not integer"}
 		}
+		return nil
+	}
+}
+
+func coerceToNumber(val any) (float64, error) {
+	vo := reflect.ValueOf(val)
+	if vo.Kind() == reflect.Ptr {
+		vo = vo.Elem()
+		return coerceToNumber(vo.Interface())
+	}
+	if vo.Kind() != reflect.String {
+		return 0, InvalidValueError
+	}
+	return strconv.ParseFloat(val.(string), 64)
+}
+
+func WithStringTransformer() genericValidatorOpt {
+	return func(v genericValidatorOptReceiver) error {
+		v.setTransformer(func(val any) (any, error) {
+			return coerceToNumber(val)
+		})
 		return nil
 	}
 }

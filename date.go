@@ -17,94 +17,41 @@ package ursa
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import (
+	"reflect"
 	"time"
 )
 
 var ErrMissingDateParser = &parseError{message: "missing date parser"}
 
-type UrsaDateOpt func(u *ursaDate, val time.Time) *parseError
-type UrsaDateParseFunc func(val string) (time.Time, error)
+type timeValidatorOpt = validatorOpt[time.Time]
 
-type ursaDate struct {
-	parseFunc    UrsaDateParseFunc
-	options      []UrsaDateOpt
-	defaultValue time.Time
-	required     bool
+func Time(opts ...any) genericValidator {
+	return newGenerator[time.Time](opts...)
 }
 
-func (u *ursaDate) Parse(val any, opts ...ParseOpt) ParseResult {
-	res := &parseResult[time.Time]{}
-	var typedVal time.Time
-	var err error
-
-	switch val := val.(type) {
-	case time.Time:
-		typedVal = val
-	case *time.Time:
-		typedVal = *val
-	case string:
-		if u.parseFunc == nil {
-			res.errors = []ParseError{ErrMissingDateParser}
-			return res
-		}
-		typedVal, err = u.parseFunc(val)
-		if err != nil {
-			res.errors = []ParseError{&parseError{message: "invalid date", inner: []error{err}}}
-			return res
-		}
-	default:
-		res.errors = []ParseError{UrsaInvalidTypeError}
-		return res
+func coerceToTime(layout string, val any) (time.Time, error) {
+	vo := reflect.ValueOf(val)
+	if vo.Kind() == reflect.Ptr {
+		vo = vo.Elem()
+		return coerceToTime(layout, vo.Interface())
 	}
-
-	for _, opt := range u.options {
-		err := opt(u, typedVal)
-		if err != nil {
-			res.errors = append(res.errors, err)
-		}
+	if vo.Kind() != reflect.String {
+		return time.Time{}, InvalidValueError
 	}
+	return time.Parse(layout, val.(string))
+}
 
-	res.valid = len(res.errors) == 0
-	if res.valid {
-		res.value = typedVal
+func WithTimeFormat(layout string) genericValidatorOpt {
+	return func(v genericValidatorOptReceiver) error {
+		v.setTransformer(func(val any) (any, error) {
+			return coerceToTime(layout, val)
+		})
+		return nil
 	}
-
-	return res
 }
 
-func (u *ursaDate) setDefault(val any) {
-	u.defaultValue = val.(time.Time)
-}
-
-func (u *ursaDate) getDefault() any {
-	return u.defaultValue
-}
-
-func (u *ursaDate) WithDateParser(fn UrsaDateParseFunc) {
-	u.parseFunc = fn
-}
-
-func Date(opts ...any) *ursaDate {
-	u := &ursaDate{
-		options: make([]UrsaDateOpt, 0, len(opts)),
-	}
-
-	for _, opt := range opts {
-		switch opt := opt.(type) {
-		case UrsaDateOpt:
-			u.options = append(u.options, opt)
-		case UrsaDateParseFunc:
-			u.parseFunc = opt
-		case EntityOpt:
-			opt(u)
-		}
-	}
-
-	return u
-}
-
-func NotBefore(datum time.Time, message ...string) UrsaDateOpt {
-	return func(u *ursaDate, val time.Time) *parseError {
+func NotBefore(datum time.Time, message ...string) timeValidatorOpt {
+	return func(val time.Time) *parseError {
 		if val.Before(datum) {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
@@ -115,8 +62,8 @@ func NotBefore(datum time.Time, message ...string) UrsaDateOpt {
 	}
 }
 
-func NotAfter(datum time.Time, message ...string) UrsaDateOpt {
-	return func(u *ursaDate, val time.Time) *parseError {
+func NotAfter(datum time.Time, message ...string) timeValidatorOpt {
+	return func(val time.Time) *parseError {
 		if val.After(datum) {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}

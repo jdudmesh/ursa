@@ -38,7 +38,7 @@ func TestString(t *testing.T) {
 
 	errs := v.Parse(1).Errors()
 	assert.Equal(1, len(errs))
-	assert.ErrorIs(errs[0], u.UrsaInvalidTypeError)
+	assert.ErrorIs(errs[0], u.MissingTransformerError)
 
 	errs = v.Parse("0123").Errors()
 	assert.Equal(1, len(errs))
@@ -52,4 +52,57 @@ func TestString(t *testing.T) {
 	assert.Equal(1, len(errs))
 	assert.Equal(errs[0].Error(), "string does not match pattern")
 
+}
+
+func TestStringPtr(t *testing.T) {
+	assert := assert.New(t)
+
+	v := u.String(
+		u.MinLength(5, "String should be at least 5 characters"),
+		u.MaxLength(10),
+		u.Matches("^[0-9]*$"))
+
+	t.Run("valid", func(t *testing.T) {
+		testVal := "01234678"
+		res := v.Parse(&testVal)
+		assert.True(res.Valid())
+	})
+
+	t.Run("nil", func(t *testing.T) {
+		res := v.Parse(nil)
+		assert.True(res.Valid())
+	})
+}
+
+func TestStringRequired(t *testing.T) {
+	assert := assert.New(t)
+
+	v := u.String(
+		u.MinLength(5, "String should be at least 5 characters"),
+		u.MaxLength(10),
+		u.Matches("^[0-9]*$"),
+		u.WithRequired())
+
+	t.Run("nil", func(t *testing.T) {
+		errs := v.Parse(nil).Errors()
+		assert.Equal(1, len(errs))
+		assert.ErrorIs(errs[0], u.RequiredPropertyMissingError)
+	})
+}
+
+func TestStringDefault(t *testing.T) {
+	assert := assert.New(t)
+
+	v := u.String(
+		u.MinLength(5, "String should be at least 5 characters"),
+		u.MaxLength(10),
+		u.Matches("^[0-9]*$"),
+		u.WithDefault("01234678"),
+		u.WithRequired())
+
+	t.Run("nil", func(t *testing.T) {
+		res := v.Parse(nil)
+		assert.True(res.Valid())
+		assert.Equal("01234678", res.Value().(string))
+	})
 }
