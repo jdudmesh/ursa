@@ -31,34 +31,34 @@ func TestObject(t *testing.T) {
 	assert := assert.New(t)
 
 	v := u.Object().
-		String("Name", u.MinLength(5, "String should be at least 5 characters")).
-		Number("Count", u.Int())
+		String("Name", u.MinLength(5, "String should be at least 5 characters"), u.Required()).
+		Int("Count")
 
-	errs := v.Parse(&struct {
+	res := v.Parse(&struct {
 		Name  string
 		Count int
 	}{
 		Name:  "abcdef",
 		Count: 5,
-	}).Errors()
-	assert.Equal(0, len(errs))
+	})
+	assert.Equal(0, len(res.Errors()))
+	assert.Equal("abcdef", res.GetField("Name").Get())
+	assert.Equal(5, res.GetField("Count").Get())
 
-	errs = v.Parse(&struct {
+	res = v.Parse(&struct {
 		Name string
 	}{
 		Name: "abc",
-	}).Errors()
-	assert.Equal(1, len(errs))
-	// assert.Equal("Name", errs[0].Field())
-	// assert.Equal("String should be at least 5 characters", errState.Inner()[0].Error())
+	})
+	assert.Equal(1, len(res.Errors()))
+	assert.Equal("String should be at least 5 characters", res.Errors()[0].Error())
+	assert.Equal("String should be at least 5 characters", res.GetField("Name").Errors()[0].Error())
 
-	errs = v.Parse(map[string]string{
+	errs := v.Parse(map[string]string{
 		"NotName": "abcdefgh",
 	}).Errors()
 	assert.Equal(1, len(errs))
-	// assert.ErrorAs(errs[0], &errState)
-	// assert.Equal("Name", errState.Field())
-	// assert.Equal("not found", errState.Error())
+	assert.Equal("missing required property", errs[0].Error())
 
 }
 
@@ -67,7 +67,7 @@ func TestObjectJSON(t *testing.T) {
 
 	v := u.Object().
 		String("Name", u.MinLength(5, "String should be at least 5 characters")).
-		Number("Count", u.Int())
+		Int("Count")
 
 	data := `{ "Name": "abcdef", "Count": 5 }`
 	errs := v.Parse([]byte(data)).Errors()
@@ -79,7 +79,7 @@ func TestObjectHTTP(t *testing.T) {
 
 	v := u.Object(u.WithMaxBodySize(1000)).
 		String("Name", u.MinLength(5, "String should be at least 5 characters")).
-		Number("Count", u.Int())
+		Int("Count")
 
 	t.Run("json", func(t *testing.T) {
 		data := `{ "Name": "abcdef", "Count": 5 }`
@@ -128,7 +128,7 @@ func TestObjectMissingField(t *testing.T) {
 
 	v := u.Object().
 		String("Name", u.MinLength(5, "String should be at least 5 characters")).
-		Number("Count", u.Int(), u.WithDefault(5))
+		Int("Count", u.WithDefault(5))
 
 	errs := v.Parse(map[string]string{
 		"Name": "abcdefgh",

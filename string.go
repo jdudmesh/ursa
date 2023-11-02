@@ -21,7 +21,7 @@ import (
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-type stringValidatorOpt = validatorOpt[string]
+type stringValidatorOpt = parseOpt[string]
 
 func String(opts ...any) genericValidator[string] {
 	return newGenerator[string](opts...)

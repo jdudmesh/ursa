@@ -26,10 +26,8 @@ import (
 func TestNumber(t *testing.T) {
 	assert := assert.New(t)
 
-	v := u.Number(
-		u.Int(),
+	v := u.Int(
 		u.WithStringTransformer(),
-		u.MustBeInteger(),
 		u.Min(5, "Number should be >= 5"),
 		u.Max(10))
 
@@ -52,10 +50,7 @@ func TestNumber(t *testing.T) {
 	errs = v.Parse(100).Errors()
 	assert.Equal(errs[0].Error(), "number too large")
 
-	u2 := u.Number(
-		u.Int16(),
-		u.NonZero())
-
+	u2 := u.Int64(u.NonZero())
 	errs = u2.Parse(0).Errors()
 	assert.Equal(errs[0].Error(), "number is uero")
 }

@@ -23,25 +23,51 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type objectValidatorOpt func(o *objectValidator) error
-type objectFieldOpt func(opts ...validatorOpt[interface{}]) genericValidator
+type objectFieldOpt func(opts ...parseOpt[interface{}]) genericValidator[interface{}]
 type objectValidatorParseOpt func(v *objectValidator, val any) error
-type objectValidatorResult map[string]*parseResult[interface{}]
 
 type objectValidator struct {
-	validators  map[string]genericValidator
+	validators  map[string]genericValidator[any]
 	maxBodySize int64
 }
 
 type objectParseResult struct {
-	parseResult[objectValidatorResult]
+	valid  bool
+	value  map[string]*parseResult[any]
+	errors []*parseError
+}
+
+func (r *objectParseResult) Valid() bool {
+	return r.valid
+}
+
+func (r *objectParseResult) Errors() []*parseError {
+	return r.errors
+}
+
+func (r *objectParseResult) Get() any {
+	return r.value
+}
+
+func (r *objectParseResult) Set(val any) {
+	if val, ok := val.(map[string]*parseResult[any]); ok {
+		r.value = val
+	}
+}
+
+func (o *objectParseResult) GetField(field string) *parseResult[any] {
+	return o.value[field]
 }
 
 func Object(opts ...any) *objectValidator {
 	v := &objectValidator{
-		validators:  make(map[string]genericValidator),
+		validators:  make(map[string]genericValidator[interface{}]),
 		maxBodySize: 1024 * 1024 * 10,
 	}
 	for _, opt := range opts {
@@ -53,7 +79,7 @@ func Object(opts ...any) *objectValidator {
 	return v
 }
 
-func (o *objectValidator) Parse(val any, opts ...ParseOpt) ParseResult {
+func (o *objectValidator) Parse(val any, opts ...parseOpt[any]) *objectParseResult {
 	switch val := val.(type) {
 	case []byte:
 		return o.parseJSON(val)
@@ -62,21 +88,25 @@ func (o *objectValidator) Parse(val any, opts ...ParseOpt) ParseResult {
 	}
 
 	parseRes := &objectParseResult{
-		parseResult: parseResult[objectValidatorResult]{
-			valid:  true,
-			value:  make(objectValidatorResult),
-			errors: make([]ParseError, 0),
-		},
+		valid:  true,
+		value:  make(map[string]*parseResult[any]),
+		errors: make([]*parseError, 0),
 	}
 
 	for name, validator := range o.validators {
 		var fieldResult *parseResult[interface{}]
 		fieldVal, err := o.extract(val, name)
 		if err != nil {
-			fieldResult = &parseResult[interface{}]{errors: []ParseError{&parseError{message: "failed to extract value", inner: []error{err}}}}
+			fieldResult = &parseResult[interface{}]{
+				errors: []*parseError{
+					{
+						message: "failed to extract value", inner: []error{err},
+					},
+				},
+			}
 		} else {
 			res := validator.Parse(fieldVal)
-			fieldResult = &parseResult[interface{}]{valid: res.Valid(), value: res.Value(), errors: res.Errors()}
+			fieldResult = &parseResult[interface{}]{valid: res.Valid(), value: res.Get(), errors: res.Errors()}
 		}
 		parseRes.value[name] = fieldResult
 		parseRes.errors = append(parseRes.errors, fieldResult.errors...)
@@ -124,20 +154,19 @@ func (o *objectValidator) extract(val any, name string) (any, error) {
 	return v.Interface(), nil
 }
 
-func (o *objectValidator) parseJSON(val []byte, opts ...ParseOpt) ParseResult {
+func (o *objectValidator) parseJSON(val []byte, opts ...parseOpt[any]) *objectParseResult {
 	unpacked := make(map[string]interface{})
 	err := json.Unmarshal(val, &unpacked)
 	if err != nil {
 		return &objectParseResult{
-			parseResult: parseResult[objectValidatorResult]{
-				valid:  false,
-				errors: []ParseError{&parseError{message: "unmarshalling JSON value", inner: []error{err}}},
-			}}
+			valid:  false,
+			errors: []*parseError{&parseError{message: "unmarshalling JSON value", inner: []error{err}}},
+		}
 	}
 	return o.Parse(unpacked, opts...)
 }
 
-func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) ParseResult {
+func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any]) *objectParseResult {
 	contentType := strings.TrimSpace(strings.Split(req.Header.Get("Content-Type"), ";")[0])
 
 	body := req.Body
@@ -148,18 +177,15 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) Pars
 	numBytes := req.ContentLength
 	if numBytes > o.maxBodySize {
 		return &objectParseResult{
-			parseResult: parseResult[objectValidatorResult]{
-				errors: []ParseError{&parseError{message: "request body too large"}},
-			}}
+			errors: []*parseError{&parseError{message: "request body too large"}},
+		}
 	}
 
 	switch contentType {
 	case "application/json":
 		buf, err := o.readBody(body, int(numBytes))
 		if err != nil {
-			return &objectParseResult{
-				parseResult: parseResult[objectValidatorResult]{errors: []ParseError{err}},
-			}
+			return &objectParseResult{errors: []*parseError{err}}
 		}
 		return o.parseJSON(buf, opts...)
 
@@ -167,9 +193,8 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) Pars
 		err := req.ParseForm()
 		if err != nil {
 			return &objectParseResult{
-				parseResult: parseResult[objectValidatorResult]{
-					errors: []ParseError{&parseError{message: "parsing form", inner: []error{err}}},
-				}}
+				errors: []*parseError{&parseError{message: "parsing form", inner: []error{err}}},
+			}
 		}
 		return o.Parse(o.readForm(req.Form), opts...)
 
@@ -177,9 +202,8 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) Pars
 		err := req.ParseMultipartForm(o.maxBodySize)
 		if err != nil {
 			return &objectParseResult{
-				parseResult: parseResult[objectValidatorResult]{
-					errors: []ParseError{&parseError{message: "parsing multipart form", inner: []error{err}}},
-				}}
+				errors: []*parseError{&parseError{message: "parsing multipart form", inner: []error{err}}},
+			}
 		}
 		return o.Parse(o.readForm(req.Form), opts...)
 
@@ -188,16 +212,14 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) Pars
 			err := req.ParseForm()
 			if err != nil {
 				return &objectParseResult{
-					parseResult: parseResult[objectValidatorResult]{
-						errors: []ParseError{&parseError{message: "parsing form", inner: []error{err}}},
-					}}
+					errors: []*parseError{&parseError{message: "parsing form", inner: []error{err}}},
+				}
 			}
 			return o.Parse(o.readForm(req.Form), opts...)
 		}
 		return &objectParseResult{
-			parseResult: parseResult[objectValidatorResult]{
-				errors: []ParseError{&parseError{message: "unsupported content type"}},
-			}}
+			errors: []*parseError{&parseError{message: "unsupported content type"}},
+		}
 	}
 }
 
@@ -222,51 +244,86 @@ func (o *objectValidator) readForm(form url.Values) map[string]interface{} {
 }
 
 func (o *objectValidator) String(name string, opts ...any) *objectValidator {
-	fv := String(opts...)
+	fv := validatorWrapperFactory[string](opts...)
 	o.validators[name] = fv
 	return o
 }
 
-func (o *objectValidator) Number(name string, gen numberValidatorGenerator, opts ...any) *objectValidator {
-	fv := Number(gen, opts...)
+func (o *objectValidator) Int(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[int](opts...)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Time(name string, opts ...any) *objectValidator {
-	fv := Time(opts...)
+	fv := validatorWrapperFactory[time.Time](opts...)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) UUID(name string, opts ...any) *objectValidator {
-	fv := UUID(opts...)
+	fv := validatorWrapperFactory[uuid.UUID](opts...)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Object(name string, opts ...any) *objectValidator {
 	fv := Object(opts...)
-	o.validators[name] = fv
+	wrapper := &objectValidatorWrapper{validator: fv}
+	o.validators[name] = wrapper
 	return o
 }
 
-// func Object(opts ...any) *ursaObject {
-// 	u := &ursaObject{
-// 		validators:  map[string]UrsaObjectOpt{},
-// 		maxBodySize: 1024 * 1024 * 10,
-// 	}
-// 	for _, opt := range opts {
-// 		switch opt := opt.(type) {
-// 		case UrsaObjectOpt:
-// 			opt(u, nil)
-// 		case UrsaObjectFieldDefiner:
-// 			name, fn := opt()
-// 			u.validators[name] = fn
-// 		}
-// 	}
-// 	return u
-// }
+type validatorWrapper[T any] struct {
+	validator genericValidator[T]
+}
+
+func parseOptWrapper[T any](fn parseOpt[interface{}]) parseOpt[T] {
+	return func(val T) *parseError {
+		res := fn(val)
+		return res
+	}
+}
+
+func (v *validatorWrapper[T]) Parse(val any, opts ...parseOpt[interface{}]) genericParseResult[interface{}] {
+	wrappedOpts := make([]parseOpt[T], len(opts))
+	for i, opt := range opts {
+		wrappedOpts[i] = parseOptWrapper[T](opt)
+	}
+	res := v.validator.Parse(val, wrappedOpts...)
+	wrappedRes := &parseResult[interface{}]{valid: res.Valid(), value: res.Get(), errors: res.Errors()}
+	return wrappedRes
+}
+
+func (v *validatorWrapper[T]) Error() error {
+	return v.validator.Error()
+}
+
+func (v *validatorWrapper[T]) Type() reflect.Type {
+	return v.validator.Type()
+}
+
+func validatorWrapperFactory[T any](opts ...any) genericValidator[interface{}] {
+	return &validatorWrapper[T]{validator: newGenerator[T](opts...)}
+}
+
+type objectValidatorWrapper struct {
+	validator *objectValidator
+}
+
+func (v *objectValidatorWrapper) Parse(val any, opts ...parseOpt[interface{}]) genericParseResult[interface{}] {
+	res := v.validator.Parse(val, opts...)
+	wrappedRes := &parseResult[interface{}]{valid: res.Valid(), value: res.Get(), errors: res.Errors()}
+	return wrappedRes
+}
+
+func (v *objectValidatorWrapper) Error() error {
+	return v.validator.Error()
+}
+
+func (v *objectValidatorWrapper) Type() reflect.Type {
+	return v.validator.Type()
+}
 
 func WithMaxBodySize(size int64) objectValidatorOpt {
 	return func(o *objectValidator) error {

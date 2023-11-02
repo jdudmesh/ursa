@@ -23,9 +23,9 @@ import (
 
 var ErrMissingDateParser = &parseError{message: "missing date parser"}
 
-type timeValidatorOpt = validatorOpt[time.Time]
+type timeValidatorOpt = parseOpt[time.Time]
 
-func Time(opts ...any) genericValidator {
+func Time(opts ...any) genericValidator[time.Time] {
 	return newGenerator[time.Time](opts...)
 }
 

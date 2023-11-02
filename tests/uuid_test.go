@@ -34,7 +34,7 @@ func TestUUID(t *testing.T) {
 	fmt.Println(u.String())
 	res := v.Parse(u)
 	assert.True(res.Valid())
-	assert.Equal(u, res.Value().(uuid.UUID))
+	assert.Equal(u, res.Get())
 
 	res = v.Parse(u.String())
 	assert.True(res.Valid())

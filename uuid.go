@@ -22,7 +22,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type uuidValidatorOpt = validatorOpt[uuid.UUID]
+type uuidValidatorOpt = parseOpt[uuid.UUID]
 
 func UUID(opts ...any) genericValidator[uuid.UUID] {
 	v := newGenerator[uuid.UUID](opts...)

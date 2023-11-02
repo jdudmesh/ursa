@@ -18,48 +18,71 @@ import "reflect"
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-type ParseOpt[T any] func(res ParseResult[T]) error
+// type parseOpt[T any] func(res *genericParseResult[T]) error
+type parseOpt[T any] func(val T) *parseError
 
-type ParseResult[T any] interface {
+type validatorOpt[T any] func(genericValidator T) error
+type transformer[T any] func(val any) (T, error)
+
+type validator[T any] struct {
+	transformerFn transformer[T]
+	options       []parseOpt[T]
+	defaultValue  *T
+	required      bool
+	err           error
+}
+
+type genericValidator[T any] interface {
+	Parse(val any, opts ...parseOpt[T]) genericParseResult[T]
+	Error() error
+	Type() reflect.Type
+}
+
+type genericParseResult[T any] interface {
 	Valid() bool
-	Errors() []ParseError
-	Value() T
-	AppendError(message string, inner ...error)
+	Errors() []*parseError
+	Get() T
+	Set(val T)
 }
 
-type ParseError interface {
-	error
-	Inner() []error
+type genericValidatorOptReceiver interface {
+	setTransformer(fn transformer[any])
+	setDefault(val any)
+	setRequired()
 }
+
+type validatorWithOpts[T any] interface {
+	genericValidator[T]
+	genericValidatorOptReceiver
+}
+
+type genericValidatorOpt func(v genericValidatorOptReceiver) error
 
 type parseResult[T any] struct {
 	valid  bool
 	value  T
-	errors []ParseError
+	errors []*parseError
+}
+
+type parseError struct {
+	message string
+	inner   []error
 }
 
 func (r *parseResult[T]) Valid() bool {
 	return r.valid
 }
 
-func (r *parseResult[T]) Errors() []ParseError {
+func (r *parseResult[T]) Errors() []*parseError {
 	return r.errors
 }
 
-func (r *parseResult[T]) AppendError(message string, inner ...error) {
-	r.errors = append(r.errors, &parseError{
-		message: message,
-		inner:   inner,
-	})
-}
-
-func (r *parseResult[T]) Value() T {
+func (r *parseResult[T]) Get() T {
 	return r.value
 }
 
-type parseError struct {
-	message string
-	inner   []error
+func (r *parseResult[T]) Set(val T) {
+	r.value = val
 }
 
 func (e *parseError) Inner() []error {
@@ -90,27 +113,16 @@ var MissingTransformerError = &parseError{
 	message: "missing property transformer",
 }
 
-type validatorOpt[T any] func(val T) *parseError
-type transformer[T any] func(val any) (T, error)
-
-type validator[T any] struct {
-	transformerFn transformer[T]
-	options       []validatorOpt[T]
-	defaultValue  *T
-	required      bool
-	err           error
-}
-
-func (v *validator[T]) Parse(val any, opts ...ParseOpt[T]) ParseResult[T] {
+func (v *validator[T]) Parse(val any, opts ...parseOpt[T]) genericParseResult[T] {
 	res := &parseResult[T]{}
 	if v.err != nil {
-		res.errors = []ParseError{InvalidValidatorStateError}
+		res.errors = []*parseError{InvalidValidatorStateError}
 		return res
 	}
 
 	typedVal, err := v.convert(val)
 	if err != nil {
-		res.errors = []ParseError{err}
+		res.errors = []*parseError{err}
 		return res
 	}
 
@@ -128,7 +140,7 @@ func (v *validator[T]) Parse(val any, opts ...ParseOpt[T]) ParseResult[T] {
 
 	res.valid = len(res.errors) == 0
 	if res.valid {
-		res.value = *typedVal
+		res.Set(*typedVal)
 	}
 
 	return res
@@ -236,25 +248,6 @@ func (b *validator[T]) Type() reflect.Type {
 	return reflect.TypeOf(zero)
 }
 
-type genericValidator[T any] interface {
-	Parse(val any, opts ...ParseOpt[T]) ParseResult[T]
-	Error() error
-	Type() reflect.Type
-}
-
-type genericValidatorOptReceiver interface {
-	setTransformer(fn transformer[any])
-	setDefault(val any)
-	setRequired()
-}
-
-type validatorWithOpts[T any] interface {
-	genericValidator[T]
-	genericValidatorOptReceiver
-}
-
-type genericValidatorOpt func(v genericValidatorOptReceiver) error
-
 func WithDefault(val any) genericValidatorOpt {
 	return func(v genericValidatorOptReceiver) error {
 		v.setDefault(val)
@@ -262,7 +255,7 @@ func WithDefault(val any) genericValidatorOpt {
 	}
 }
 
-func WithRequired() genericValidatorOpt {
+func Required() genericValidatorOpt {
 	return func(v genericValidatorOptReceiver) error {
 		v.setRequired()
 		return nil
@@ -280,11 +273,11 @@ func isNilable(i interface{}) bool {
 
 func newGenerator[T any](opts ...any) validatorWithOpts[T] {
 	v := &validator[T]{
-		options: make([]validatorOpt[T], 0, len(opts)),
+		options: make([]parseOpt[T], 0, len(opts)),
 	}
 	for _, opt := range opts {
 		switch opt := opt.(type) {
-		case validatorOpt[T]:
+		case parseOpt[T]:
 			v.options = append(v.options, opt)
 		case genericValidatorOpt:
 			opt(v)

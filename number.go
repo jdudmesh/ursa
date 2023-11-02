@@ -28,73 +28,71 @@ type number interface {
 	constraints.Integer | constraints.Float
 }
 
-type numberValidatorOpt = validatorOpt[float64]
+type numberValidatorOpt func(val float64) *parseError
 type numberValidatorGenerator[T number] func(opts ...any) genericValidator[T]
 
-func Number(generatorFn numberValidatorGenerator, opts ...any) genericValidator {
-	v := generatorFn(opts...)
-	return v
-}
-
-func optWrapper[T any](fn numberValidatorOpt) validatorOpt[T] {
+func optWrapper[T any](fn numberValidatorOpt) parseOpt[T] {
 	return func(val T) *parseError {
-		n := reflect.ValueOf(val).Convert(reflect.TypeOf(0.0)).Interface().(float64)
-		return fn(n)
-	}
-}
-
-func numberValidator[T number]() numberValidatorGenerator[T] {
-	return func(opts ...any) genericValidator[T] {
-		wrappedOpts := make([]any, len(opts))
-		for i, opt := range opts {
-			if fn, ok := opt.(numberValidatorOpt); ok {
-				wrappedOpts[i] = optWrapper[T](fn)
-			} else {
-				wrappedOpts[i] = opt
-			}
+		var zero float64
+		zeroType := reflect.TypeOf(zero)
+		if reflect.TypeOf(val).ConvertibleTo(zeroType) {
+			n := reflect.ValueOf(val).Convert(zeroType).Interface().(float64)
+			return fn(n)
 		}
-		return newGenerator[T](wrappedOpts...)
+		return InvalidTypeError
 	}
 }
 
-func Int() numberValidatorGenerator[int] {
-	return numberValidator[int]()
+func numberValidator[T number](opts ...any) genericValidator[T] {
+	wrappedOpts := make([]any, len(opts))
+	for i, opt := range opts {
+		if fn, ok := opt.(numberValidatorOpt); ok {
+			wrappedOpts[i] = optWrapper[T](fn)
+		} else {
+			wrappedOpts[i] = opt
+		}
+	}
+	return newGenerator[T](wrappedOpts...)
 }
 
-func Int16() numberValidatorGenerator[int16] {
-	return numberValidator[int16]()
+func Int(opts ...any) genericValidator[int] {
+	return numberValidator[int](opts...)
 }
 
-func Int32() numberValidatorGenerator[int32] {
-	return numberValidator[int32]()
+func Int16(opts ...any) genericValidator[int16] {
+	return numberValidator[int16](opts...)
 }
 
-func Int64() numberValidatorGenerator[int64] {
-	return numberValidator[int64]()
+func Int32(opts ...any) genericValidator[int32] {
+	return numberValidator[int32](opts...)
 }
 
-func Uint() numberValidatorGenerator[uint] {
-	return numberValidator[uint]()
+func Int64(opts ...any) genericValidator[int64] {
+	return numberValidator[int64](opts...)
 }
 
-func Uint16() numberValidatorGenerator[uint16] {
-	return numberValidator[uint16]()
+func UInt(opts ...any) genericValidator[uint] {
+	return numberValidator[uint](opts...)
 }
 
-func Uint32() numberValidatorGenerator[uint32] {
-	return numberValidator[uint32]()
+func UInt16(opts ...any) genericValidator[uint16] {
+	return numberValidator[uint16](opts...)
 }
 
-func Uint64() numberValidatorGenerator[uint64] {
-	return numberValidator[uint64]()
+func UInt32(opts ...any) genericValidator[uint32] {
+	return numberValidator[uint32](opts...)
 }
 
-func Float32() numberValidatorGenerator[float32] {
-	return numberValidator[float32]()
+func UInt64(opts ...any) genericValidator[uint64] {
+	return numberValidator[uint64](opts...)
 }
 
-func Float64() numberValidatorGenerator[float64] {
-	return numberValidator[float64]()
+func Float32(opts ...any) genericValidator[float32] {
+	return numberValidator[float32](opts...)
+}
+
+func Float64(opts ...any) genericValidator[float64] {
+	return numberValidator[float64](opts...)
 }
 
 func Min(min float64, message ...string) numberValidatorOpt {

@@ -17,6 +17,7 @@ package tests
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import (
+	"slices"
 	"testing"
 
 	u "github.com/jdudmesh/ursa"
@@ -34,11 +35,16 @@ func TestString(t *testing.T) {
 	res := v.Parse("01234678")
 	assert.True(res.Valid())
 	assert.Equal(0, len(res.Errors()))
-	assert.Equal("01234678", res.Value().(string))
+	assert.Equal("01234678", res.Get())
 
 	errs := v.Parse(1).Errors()
-	assert.Equal(1, len(errs))
-	assert.ErrorIs(errs[0], u.MissingTransformerError)
+	assert.Equal(2, len(errs))
+	msgs := make([]string, 0, len(errs))
+	for _, m := range errs {
+		msgs = append(msgs, m.Error())
+	}
+	assert.True(slices.Contains(msgs, "String should be at least 5 characters"))
+	assert.True(slices.Contains(msgs, "string does not match pattern"))
 
 	errs = v.Parse("0123").Errors()
 	assert.Equal(1, len(errs))
@@ -81,7 +87,7 @@ func TestStringRequired(t *testing.T) {
 		u.MinLength(5, "String should be at least 5 characters"),
 		u.MaxLength(10),
 		u.Matches("^[0-9]*$"),
-		u.WithRequired())
+		u.Required())
 
 	t.Run("nil", func(t *testing.T) {
 		errs := v.Parse(nil).Errors()
@@ -98,11 +104,11 @@ func TestStringDefault(t *testing.T) {
 		u.MaxLength(10),
 		u.Matches("^[0-9]*$"),
 		u.WithDefault("01234678"),
-		u.WithRequired())
+		u.Required())
 
 	t.Run("nil", func(t *testing.T) {
 		res := v.Parse(nil)
 		assert.True(res.Valid())
-		assert.Equal("01234678", res.Value().(string))
+		assert.Equal("01234678", res.Get())
 	})
 }
