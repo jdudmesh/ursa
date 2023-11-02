@@ -23,7 +23,7 @@ import (
 
 type stringValidatorOpt = validatorOpt[string]
 
-func String(opts ...any) genericValidator {
+func String(opts ...any) genericValidator[string] {
 	return newGenerator[string](opts...)
 }
 

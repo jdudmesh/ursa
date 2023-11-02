@@ -70,18 +70,19 @@ func (o *objectValidator) Parse(val any, opts ...ParseOpt) ParseResult {
 	}
 
 	for name, validator := range o.validators {
+		var fieldResult *parseResult[interface{}]
 		fieldVal, err := o.extract(val, name)
 		if err != nil {
-			parseRes.value[name] = &parseResult[interface{}]{errors: []ParseError{&parseError{message: "failed to extract value", inner: []error{err}}}}
-			parseRes.valid = false
-			continue
+			fieldResult = &parseResult[interface{}]{errors: []ParseError{&parseError{message: "failed to extract value", inner: []error{err}}}}
+		} else {
+			res := validator.Parse(fieldVal)
+			fieldResult = &parseResult[interface{}]{valid: res.Valid(), value: res.Value(), errors: res.Errors()}
 		}
-
-		fieldResult := validator.Parse(fieldVal)
+		parseRes.value[name] = fieldResult
+		parseRes.errors = append(parseRes.errors, fieldResult.errors...)
 		if !fieldResult.Valid() {
 			parseRes.valid = false
 		}
-		parseRes.value[name] = &parseResult[interface{}]{valid: fieldResult.Valid(), value: fieldResult.Value(), errors: fieldResult.Errors()}
 	}
 
 	return parseRes
@@ -127,10 +128,11 @@ func (o *objectValidator) parseJSON(val []byte, opts ...ParseOpt) ParseResult {
 	unpacked := make(map[string]interface{})
 	err := json.Unmarshal(val, &unpacked)
 	if err != nil {
-		return &parseResult[interface{}]{
-			valid:  false,
-			errors: []ParseError{&parseError{message: "unmarshalling JSON value", inner: []error{err}}},
-		}
+		return &objectParseResult{
+			parseResult: parseResult[objectValidatorResult]{
+				valid:  false,
+				errors: []ParseError{&parseError{message: "unmarshalling JSON value", inner: []error{err}}},
+			}}
 	}
 	return o.Parse(unpacked, opts...)
 }
@@ -145,28 +147,39 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) Pars
 
 	numBytes := req.ContentLength
 	if numBytes > o.maxBodySize {
-		return &parseResult[interface{}]{errors: []ParseError{&parseError{message: "request body too large"}}}
+		return &objectParseResult{
+			parseResult: parseResult[objectValidatorResult]{
+				errors: []ParseError{&parseError{message: "request body too large"}},
+			}}
 	}
 
 	switch contentType {
 	case "application/json":
 		buf, err := o.readBody(body, int(numBytes))
 		if err != nil {
-			return &parseResult[interface{}]{errors: []ParseError{err}}
+			return &objectParseResult{
+				parseResult: parseResult[objectValidatorResult]{errors: []ParseError{err}},
+			}
 		}
 		return o.parseJSON(buf, opts...)
 
 	case "application/x-www-form-urlencoded":
 		err := req.ParseForm()
 		if err != nil {
-			return &parseResult[interface{}]{errors: []ParseError{&parseError{message: "parsing form", inner: []error{err}}}}
+			return &objectParseResult{
+				parseResult: parseResult[objectValidatorResult]{
+					errors: []ParseError{&parseError{message: "parsing form", inner: []error{err}}},
+				}}
 		}
 		return o.Parse(o.readForm(req.Form), opts...)
 
 	case "multipart/form-data":
 		err := req.ParseMultipartForm(o.maxBodySize)
 		if err != nil {
-			return &parseResult[interface{}]{errors: []ParseError{&parseError{message: "parsing multipart form", inner: []error{err}}}}
+			return &objectParseResult{
+				parseResult: parseResult[objectValidatorResult]{
+					errors: []ParseError{&parseError{message: "parsing multipart form", inner: []error{err}}},
+				}}
 		}
 		return o.Parse(o.readForm(req.Form), opts...)
 
@@ -174,11 +187,17 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...ParseOpt) Pars
 		if req.Method == "GET" {
 			err := req.ParseForm()
 			if err != nil {
-				return &parseResult[interface{}]{errors: []ParseError{&parseError{message: "parsing form", inner: []error{err}}}}
+				return &objectParseResult{
+					parseResult: parseResult[objectValidatorResult]{
+						errors: []ParseError{&parseError{message: "parsing form", inner: []error{err}}},
+					}}
 			}
 			return o.Parse(o.readForm(req.Form), opts...)
 		}
-		return &parseResult[interface{}]{errors: []ParseError{&parseError{message: "unsupported content type"}}}
+		return &objectParseResult{
+			parseResult: parseResult[objectValidatorResult]{
+				errors: []ParseError{&parseError{message: "unsupported content type"}},
+			}}
 	}
 }
 

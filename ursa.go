@@ -18,12 +18,12 @@ import "reflect"
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-type ParseOpt func(res ParseResult) error
+type ParseOpt[T any] func(res ParseResult[T]) error
 
-type ParseResult interface {
+type ParseResult[T any] interface {
 	Valid() bool
 	Errors() []ParseError
-	Value() interface{}
+	Value() T
 	AppendError(message string, inner ...error)
 }
 
@@ -53,7 +53,7 @@ func (r *parseResult[T]) AppendError(message string, inner ...error) {
 	})
 }
 
-func (r *parseResult[T]) Value() interface{} {
+func (r *parseResult[T]) Value() T {
 	return r.value
 }
 
@@ -101,7 +101,7 @@ type validator[T any] struct {
 	err           error
 }
 
-func (v *validator[T]) Parse(val any, opts ...ParseOpt) ParseResult {
+func (v *validator[T]) Parse(val any, opts ...ParseOpt[T]) ParseResult[T] {
 	res := &parseResult[T]{}
 	if v.err != nil {
 		res.errors = []ParseError{InvalidValidatorStateError}
@@ -236,8 +236,8 @@ func (b *validator[T]) Type() reflect.Type {
 	return reflect.TypeOf(zero)
 }
 
-type genericValidator interface {
-	Parse(val any, opts ...ParseOpt) ParseResult
+type genericValidator[T any] interface {
+	Parse(val any, opts ...ParseOpt[T]) ParseResult[T]
 	Error() error
 	Type() reflect.Type
 }
@@ -248,8 +248,8 @@ type genericValidatorOptReceiver interface {
 	setRequired()
 }
 
-type validatorWithOpts interface {
-	genericValidator
+type validatorWithOpts[T any] interface {
+	genericValidator[T]
 	genericValidatorOptReceiver
 }
 
@@ -278,7 +278,7 @@ func isNilable(i interface{}) bool {
 	}
 }
 
-func newGenerator[T any](opts ...any) validatorWithOpts {
+func newGenerator[T any](opts ...any) validatorWithOpts[T] {
 	v := &validator[T]{
 		options: make([]validatorOpt[T], 0, len(opts)),
 	}

@@ -24,8 +24,12 @@ import (
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+type number interface {
+	constraints.Integer | constraints.Float
+}
+
 type numberValidatorOpt = validatorOpt[float64]
-type numberValidatorGenerator func(opts ...any) genericValidator
+type numberValidatorGenerator[T number] func(opts ...any) genericValidator[T]
 
 func Number(generatorFn numberValidatorGenerator, opts ...any) genericValidator {
 	v := generatorFn(opts...)
@@ -39,8 +43,8 @@ func optWrapper[T any](fn numberValidatorOpt) validatorOpt[T] {
 	}
 }
 
-func numberValidator[T constraints.Integer | constraints.Signed | constraints.Unsigned | constraints.Float]() numberValidatorGenerator {
-	return func(opts ...any) genericValidator {
+func numberValidator[T number]() numberValidatorGenerator[T] {
+	return func(opts ...any) genericValidator[T] {
 		wrappedOpts := make([]any, len(opts))
 		for i, opt := range opts {
 			if fn, ok := opt.(numberValidatorOpt); ok {
@@ -53,43 +57,43 @@ func numberValidator[T constraints.Integer | constraints.Signed | constraints.Un
 	}
 }
 
-func Int() numberValidatorGenerator {
+func Int() numberValidatorGenerator[int] {
 	return numberValidator[int]()
 }
 
-func Int16() numberValidatorGenerator {
+func Int16() numberValidatorGenerator[int16] {
 	return numberValidator[int16]()
 }
 
-func Int32() numberValidatorGenerator {
+func Int32() numberValidatorGenerator[int32] {
 	return numberValidator[int32]()
 }
 
-func Int64() numberValidatorGenerator {
+func Int64() numberValidatorGenerator[int64] {
 	return numberValidator[int64]()
 }
 
-func Uint() numberValidatorGenerator {
+func Uint() numberValidatorGenerator[uint] {
 	return numberValidator[uint]()
 }
 
-func Uint16() numberValidatorGenerator {
+func Uint16() numberValidatorGenerator[uint16] {
 	return numberValidator[uint16]()
 }
 
-func Uint32() numberValidatorGenerator {
+func Uint32() numberValidatorGenerator[uint32] {
 	return numberValidator[uint32]()
 }
 
-func Uint64() numberValidatorGenerator {
+func Uint64() numberValidatorGenerator[uint64] {
 	return numberValidator[uint64]()
 }
 
-func Float32() numberValidatorGenerator {
+func Float32() numberValidatorGenerator[float32] {
 	return numberValidator[float32]()
 }
 
-func Float64() numberValidatorGenerator {
+func Float64() numberValidatorGenerator[float64] {
 	return numberValidator[float64]()
 }
 

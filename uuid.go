@@ -24,7 +24,7 @@ import (
 
 type uuidValidatorOpt = validatorOpt[uuid.UUID]
 
-func UUID(opts ...any) genericValidator {
+func UUID(opts ...any) genericValidator[uuid.UUID] {
 	v := newGenerator[uuid.UUID](opts...)
 	v.setTransformer(func(val any) (any, error) {
 		return coerceToUUID(val)
