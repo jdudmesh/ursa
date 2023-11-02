@@ -104,8 +104,8 @@ func TestObjectHTTP(t *testing.T) {
 	t.Run("multipart form", func(t *testing.T) {
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
-		writer.WriteField("Name", "abcdef")
-		writer.WriteField("Count", "5")
+		_ = writer.WriteField("Name", "abcdef")
+		_ = writer.WriteField("Count", "5")
 		writer.Close()
 
 		req, _ := http.NewRequest("POST", "http://localhost:8080/upload", body)

@@ -20,8 +20,6 @@ import "reflect"
 
 // type parseOpt[T any] func(res *genericParseResult[T]) error
 type parseOpt[T any] func(val T) *parseError
-
-type validatorOpt[T any] func(genericValidator T) error
 type transformer[T any] func(val any) (T, error)
 
 type validator[T any] struct {
@@ -235,10 +233,6 @@ func (b *validator[T]) setRequired() {
 	b.required = true
 }
 
-func (b *validator[T]) getRequired() bool {
-	return b.required
-}
-
 func (b *validator[T]) Error() error {
 	return b.err
 }
@@ -262,15 +256,6 @@ func Required() genericValidatorOpt {
 	}
 }
 
-func isNilable(i interface{}) bool {
-	switch reflect.TypeOf(i).Kind() {
-	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Slice:
-		return true
-	default:
-		return false
-	}
-}
-
 func newGenerator[T any](opts ...any) validatorWithOpts[T] {
 	v := &validator[T]{
 		options: make([]parseOpt[T], 0, len(opts)),
@@ -280,7 +265,10 @@ func newGenerator[T any](opts ...any) validatorWithOpts[T] {
 		case parseOpt[T]:
 			v.options = append(v.options, opt)
 		case genericValidatorOpt:
-			opt(v)
+			err := opt(v)
+			if err != nil {
+				v.err = err
+			}
 		}
 	}
 	return v

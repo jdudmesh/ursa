@@ -29,18 +29,15 @@ import (
 )
 
 type objectValidatorOpt func(o *objectValidator) error
-type objectFieldOpt func(opts ...parseOpt[interface{}]) genericValidator[interface{}]
-type objectValidatorParseOpt func(v *objectValidator, val any) error
 
 type objectValidator struct {
 	validators  map[string]genericValidator[any]
 	maxBodySize int64
+	err         error
 }
 
 type objectParseResult struct {
-	valid  bool
-	value  map[string]*parseResult[any]
-	errors []*parseError
+	parseResult[map[string]*parseResult[any]]
 }
 
 func (r *objectParseResult) Valid() bool {
@@ -73,24 +70,34 @@ func Object(opts ...any) *objectValidator {
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case objectValidatorOpt:
-			opt(v)
+			err := opt(v)
+			if err != nil {
+				v.err = err
+			}
 		}
 	}
 	return v
 }
 
 func (o *objectValidator) Parse(val any, opts ...parseOpt[any]) *objectParseResult {
+	parseRes := &objectParseResult{
+		parseResult: parseResult[map[string]*parseResult[any]]{
+			valid:  true,
+			value:  make(map[string]*parseResult[any]),
+			errors: make([]*parseError, 0),
+		},
+	}
+
+	if o.err != nil {
+		parseRes.errors = []*parseError{InvalidValidatorStateError}
+		return parseRes
+	}
+
 	switch val := val.(type) {
 	case []byte:
 		return o.parseJSON(val)
 	case *http.Request:
 		return o.parseRequest(val)
-	}
-
-	parseRes := &objectParseResult{
-		valid:  true,
-		value:  make(map[string]*parseResult[any]),
-		errors: make([]*parseError, 0),
 	}
 
 	for name, validator := range o.validators {
@@ -159,8 +166,10 @@ func (o *objectValidator) parseJSON(val []byte, opts ...parseOpt[any]) *objectPa
 	err := json.Unmarshal(val, &unpacked)
 	if err != nil {
 		return &objectParseResult{
-			valid:  false,
-			errors: []*parseError{&parseError{message: "unmarshalling JSON value", inner: []error{err}}},
+			parseResult: parseResult[map[string]*parseResult[any]]{
+				valid:  false,
+				errors: []*parseError{{message: "unmarshalling JSON value", inner: []error{err}}},
+			},
 		}
 	}
 	return o.Parse(unpacked, opts...)
@@ -177,7 +186,9 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 	numBytes := req.ContentLength
 	if numBytes > o.maxBodySize {
 		return &objectParseResult{
-			errors: []*parseError{&parseError{message: "request body too large"}},
+			parseResult: parseResult[map[string]*parseResult[any]]{
+				errors: []*parseError{{message: "request body too large"}},
+			},
 		}
 	}
 
@@ -185,7 +196,11 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 	case "application/json":
 		buf, err := o.readBody(body, int(numBytes))
 		if err != nil {
-			return &objectParseResult{errors: []*parseError{err}}
+			return &objectParseResult{
+				parseResult: parseResult[map[string]*parseResult[any]]{
+					errors: []*parseError{err},
+				},
+			}
 		}
 		return o.parseJSON(buf, opts...)
 
@@ -193,7 +208,9 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 		err := req.ParseForm()
 		if err != nil {
 			return &objectParseResult{
-				errors: []*parseError{&parseError{message: "parsing form", inner: []error{err}}},
+				parseResult: parseResult[map[string]*parseResult[any]]{
+					errors: []*parseError{{message: "parsing form", inner: []error{err}}},
+				},
 			}
 		}
 		return o.Parse(o.readForm(req.Form), opts...)
@@ -202,7 +219,9 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 		err := req.ParseMultipartForm(o.maxBodySize)
 		if err != nil {
 			return &objectParseResult{
-				errors: []*parseError{&parseError{message: "parsing multipart form", inner: []error{err}}},
+				parseResult: parseResult[map[string]*parseResult[any]]{
+					errors: []*parseError{{message: "parsing multipart form", inner: []error{err}}},
+				},
 			}
 		}
 		return o.Parse(o.readForm(req.Form), opts...)
@@ -212,13 +231,17 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 			err := req.ParseForm()
 			if err != nil {
 				return &objectParseResult{
-					errors: []*parseError{&parseError{message: "parsing form", inner: []error{err}}},
+					parseResult: parseResult[map[string]*parseResult[any]]{
+						errors: []*parseError{{message: "parsing form", inner: []error{err}}},
+					},
 				}
 			}
 			return o.Parse(o.readForm(req.Form), opts...)
 		}
 		return &objectParseResult{
-			errors: []*parseError{&parseError{message: "unsupported content type"}},
+			parseResult: parseResult[map[string]*parseResult[any]]{
+				errors: []*parseError{{message: "unsupported content type"}},
+			},
 		}
 	}
 }

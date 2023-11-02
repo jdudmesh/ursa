@@ -29,7 +29,6 @@ type number interface {
 }
 
 type numberValidatorOpt func(val float64) *parseError
-type numberValidatorGenerator[T number] func(opts ...any) genericValidator[T]
 
 func optWrapper[T any](fn numberValidatorOpt) parseOpt[T] {
 	return func(val T) *parseError {
