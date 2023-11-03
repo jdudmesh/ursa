@@ -123,6 +123,39 @@ func TestObjectHTTP(t *testing.T) {
 	})
 }
 
+func TestFileHandler(t *testing.T) {
+	assert := assert.New(t)
+
+	v := u.Object(u.WithMaxBodySize(1000), u.WithFileHandler(func(name string, header *multipart.FileHeader) error {
+		assert.Equal("file", name)
+		assert.Equal("test.txt", header.Filename)
+		file, err := header.Open()
+		assert.NoError(err)
+		buf := new(bytes.Buffer)
+		_, err = buf.ReadFrom(file)
+		assert.NoError(err)
+		assert.Equal("test", buf.String())
+		return nil
+	})).
+		String("Name", u.MinLength(5, "String should be at least 5 characters")).
+		Int("Count")
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("Name", "abcdef")
+	_ = writer.WriteField("Count", "5")
+	// attach file
+	fileWriter, _ := writer.CreateFormFile("file", "test.txt")
+	_, _ = fileWriter.Write([]byte("test"))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", "http://localhost:8080/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	errs := v.Parse(req).Errors()
+	assert.Equal(0, len(errs))
+}
+
 func TestObjectMissingField(t *testing.T) {
 	assert := assert.New(t)
 
@@ -130,11 +163,12 @@ func TestObjectMissingField(t *testing.T) {
 		String("Name", u.MinLength(5, "String should be at least 5 characters")).
 		Int("Count", u.WithDefault(5))
 
-	errs := v.Parse(map[string]string{
+	res := v.Parse(map[string]string{
 		"Name": "abcdefgh",
-	}).Errors()
-	assert.Equal(0, len(errs))
-
+	})
+	assert.True(res.Valid())
+	assert.Equal("abcdefgh", res.GetField("Name").Get())
+	assert.Equal(5, res.GetField("Count").Get())
 }
 
 type testStruct struct {

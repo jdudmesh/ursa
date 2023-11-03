@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -30,11 +31,13 @@ import (
 )
 
 type objectValidatorOpt func(o *objectValidator) error
+type objectMultipartFileHandler func(name string, file *multipart.FileHeader) error
 
 type objectValidator struct {
-	validators  map[string]genericValidator[any]
-	maxBodySize int64
-	err         error
+	validators           map[string]genericValidator[any]
+	maxBodySize          int64
+	multipartFileHandler objectMultipartFileHandler
+	err                  error
 }
 
 type objectParseResult struct {
@@ -281,6 +284,21 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 				},
 			}
 		}
+
+		if o.multipartFileHandler != nil {
+			for name, fileHeaders := range req.MultipartForm.File {
+				for _, fileHeader := range fileHeaders {
+					if err := o.multipartFileHandler(name, fileHeader); err != nil {
+						return &objectParseResult{
+							parseResult: parseResult[map[string]*parseResult[any]]{
+								errors: []*parseError{{message: "handling file", inner: []error{err}}},
+							},
+						}
+					}
+				}
+			}
+		}
+
 		return o.Parse(o.readForm(req.Form), opts...)
 
 	default:
@@ -462,6 +480,13 @@ func (v *objectValidatorWrapper) Type() reflect.Type {
 func WithMaxBodySize(size int64) objectValidatorOpt {
 	return func(o *objectValidator) error {
 		o.maxBodySize = size
+		return nil
+	}
+}
+
+func WithFileHandler(handler objectMultipartFileHandler) objectValidatorOpt {
+	return func(o *objectValidator) error {
+		o.multipartFileHandler = handler
 		return nil
 	}
 }
