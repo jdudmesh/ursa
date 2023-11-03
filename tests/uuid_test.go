@@ -17,7 +17,6 @@ package tests
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -31,7 +30,7 @@ func TestUUID(t *testing.T) {
 	v := u.UUID(u.NonNullUUID())
 
 	u := uuid.New()
-	fmt.Println(u.String())
+
 	res := v.Parse(u)
 	assert.True(res.Valid())
 	assert.Equal(u, res.Get())

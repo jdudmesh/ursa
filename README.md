@@ -65,15 +65,19 @@ if !result.Valid() {
 // define a schema
 schema := u.Object().
   String("Name", u.MinLength(5, "String should be at least 5 characters")).
-  Number("Count", u.Int()) // not defining struct data type
+  Int("Count")
 
-errs := schema.Parse(&struct {
+data := &struct {
   Name  string
   Count int
 }{
   Name:  "abcdef",
   Count: 5,
-}).Errors()
+}
+
+errs := schema.Parse(data).Errors()
+
+
 ```
 
 ## Gotchas
@@ -84,6 +88,5 @@ errs := schema.Parse(&struct {
 
 ## TODO
 
-- validate strings against enum
 - Multipart file handling
 - generate types

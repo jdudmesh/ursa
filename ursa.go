@@ -44,6 +44,7 @@ type genericParseResult[T any] interface {
 }
 
 type genericValidatorOptReceiver interface {
+	hasTransformer() bool
 	setTransformer(fn transformer[any])
 	setDefault(val any)
 	setRequired()
@@ -165,6 +166,20 @@ func (v *validator[T]) convert(val any) (*T, *parseError) {
 	}
 
 	if vo.Kind() != reflect.TypeOf(typedVal).Kind() {
+		if v.transformerFn == nil {
+			if !isNumeric(val) && isNumeric(typedVal) {
+				val, err = coerceToNumber[float64](val)
+				if err != nil {
+					return nil, InvalidTypeError
+				}
+			}
+		} else {
+			val, err = v.transformerFn(val)
+			if err != nil {
+				return nil, &parseError{message: "transformer error", inner: []error{err}}
+			}
+		}
+
 		if reflect.TypeOf(val).ConvertibleTo(reflect.TypeOf(typedVal)) {
 			if v, ok := reflect.ValueOf(val).Convert(reflect.TypeOf(typedVal)).Interface().(T); ok {
 				typedVal = v
@@ -172,14 +187,7 @@ func (v *validator[T]) convert(val any) (*T, *parseError) {
 				return nil, InvalidTypeError
 			}
 		} else {
-			if v.transformerFn == nil {
-				return nil, MissingTransformerError
-			}
-
-			typedVal, err = v.transformerFn(val)
-			if err != nil {
-				return nil, &parseError{message: err.Error()}
-			}
+			return nil, MissingTransformerError
 		}
 
 	} else {
@@ -205,6 +213,10 @@ func (b *validator[T]) setTransformer(fn transformer[any]) {
 		val = vo.Convert(reflect.TypeOf(zero)).Interface().(T)
 		return val.(T), err
 	}
+}
+
+func (b *validator[T]) hasTransformer() bool {
+	return b.transformerFn != nil
 }
 
 func (b *validator[T]) setDefault(val any) {
@@ -260,6 +272,7 @@ func newGenerator[T any](opts ...any) validatorWithOpts[T] {
 	v := &validator[T]{
 		options: make([]parseOpt[T], 0, len(opts)),
 	}
+
 	for _, opt := range opts {
 		switch opt := opt.(type) {
 		case parseOpt[T]:
@@ -271,5 +284,17 @@ func newGenerator[T any](opts ...any) validatorWithOpts[T] {
 			}
 		}
 	}
+
 	return v
+}
+
+func isNumeric(i interface{}) bool {
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		return true
+	default:
+		return false
+	}
 }

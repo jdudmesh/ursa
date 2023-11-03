@@ -40,22 +40,14 @@ type objectParseResult struct {
 	parseResult[map[string]*parseResult[any]]
 }
 
-func (r *objectParseResult) Valid() bool {
-	return r.valid
-}
-
-func (r *objectParseResult) Errors() []*parseError {
-	return r.errors
-}
-
-func (r *objectParseResult) Get() any {
-	return r.value
-}
-
 func (r *objectParseResult) Set(val any) {
 	if val, ok := val.(map[string]*parseResult[any]); ok {
 		r.value = val
 	}
+}
+
+func (r *objectParseResult) Unmarshal(val any) {
+	//TODO: implememnt
 }
 
 func (o *objectParseResult) GetField(field string) *parseResult[any] {
@@ -274,6 +266,60 @@ func (o *objectValidator) String(name string, opts ...any) *objectValidator {
 
 func (o *objectValidator) Int(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[int](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Int16(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[int16](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Int32(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[int32](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Int64(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[int64](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Uint(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[uint](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Uint16(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[uint16](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Uint32(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[uint32](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Uint64(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[uint64](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Float32(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[float32](opts...)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Float64(name string, opts ...any) *objectValidator {
+	fv := validatorWrapperFactory[float64](opts...)
 	o.validators[name] = fv
 	return o
 }

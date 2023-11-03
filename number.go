@@ -51,7 +51,10 @@ func numberValidator[T number](opts ...any) genericValidator[T] {
 			wrappedOpts[i] = opt
 		}
 	}
-	return newGenerator[T](wrappedOpts...)
+
+	v := newGenerator[T](wrappedOpts...)
+
+	return v
 }
 
 func Int(opts ...any) genericValidator[int] {
@@ -124,7 +127,7 @@ func NonZero(message ...string) numberValidatorOpt {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
-			return &parseError{message: "number is uero"}
+			return &parseError{message: "number is zero"}
 		}
 		return nil
 	}
@@ -142,23 +145,19 @@ func MustBeInteger(message ...string) numberValidatorOpt {
 	}
 }
 
-func coerceToNumber(val any) (float64, error) {
+func coerceToNumber[T number](val any) (T, error) {
 	vo := reflect.ValueOf(val)
 	if vo.Kind() == reflect.Ptr {
 		vo = vo.Elem()
-		return coerceToNumber(vo.Interface())
+		return coerceToNumber[T](vo.Interface())
 	}
-	if vo.Kind() != reflect.String {
+	if val, ok := val.(string); !ok {
 		return 0, InvalidValueError
-	}
-	return strconv.ParseFloat(val.(string), 64)
-}
-
-func WithStringTransformer() genericValidatorOpt {
-	return func(v genericValidatorOptReceiver) error {
-		v.setTransformer(func(val any) (any, error) {
-			return coerceToNumber(val)
-		})
-		return nil
+	} else {
+		floatVal, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return T(0), InvalidValueError
+		}
+		return T(floatVal), nil
 	}
 }

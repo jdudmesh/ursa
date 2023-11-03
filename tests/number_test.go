@@ -27,7 +27,6 @@ func TestNumber(t *testing.T) {
 	assert := assert.New(t)
 
 	v := u.Int(
-		u.WithStringTransformer(),
 		u.Min(5, "Number should be >= 5"),
 		u.Max(10))
 
@@ -36,10 +35,11 @@ func TestNumber(t *testing.T) {
 
 	res = v.Parse("7")
 	assert.Equal(true, res.Valid())
+	assert.Equal(7, res.Get())
 
 	errs := v.Parse("ursa").Errors()
 	assert.Equal(1, len(errs))
-	assert.EqualError(errs[0], u.InvalidValueError.Error())
+	assert.EqualError(errs[0], u.InvalidTypeError.Error())
 
 	errs = v.Parse(3.14).Errors()
 	assert.Equal(errs[0].Error(), "Number should be >= 5")
@@ -52,5 +52,5 @@ func TestNumber(t *testing.T) {
 
 	u2 := u.Int64(u.NonZero())
 	errs = u2.Parse(0).Errors()
-	assert.Equal(errs[0].Error(), "number is uero")
+	assert.Equal(errs[0].Error(), "number is zero")
 }
