@@ -136,3 +136,39 @@ func TestObjectMissingField(t *testing.T) {
 	assert.Equal(0, len(errs))
 
 }
+
+type testStruct struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+func TestUnmarshal(t *testing.T) {
+	v := u.Object().
+		String("name", u.MinLength(5, "String should be at least 5 characters"), u.Required()).
+		Int("count")
+
+	data := map[string]interface{}{
+		"name":  "abcdef",
+		"count": 5,
+	}
+
+	res := v.Parse(data)
+
+	assert.True(t, res.Valid())
+
+	t.Run("unpack to map", func(t *testing.T) {
+		tgt := make(map[string]interface{})
+		err := res.Unmarshal(tgt)
+		assert.NoError(t, err)
+		assert.Equal(t, "abcdef", tgt["name"])
+		assert.Equal(t, 5, tgt["count"])
+	})
+
+	t.Run("unpack to struct", func(t *testing.T) {
+		tgt := testStruct{}
+		err := res.Unmarshal(&tgt)
+		assert.NoError(t, err)
+		assert.Equal(t, "abcdef", tgt.Name)
+		assert.Equal(t, 5, tgt.Count)
+	})
+}

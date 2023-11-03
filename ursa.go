@@ -1,6 +1,9 @@
 package ursa
 
-import "reflect"
+import (
+	"reflect"
+	"strings"
+)
 
 // ursa is a zod inspired validation library for Go.
 // Copyright (C) 2023 John Dudmesh
@@ -297,4 +300,16 @@ func isNumeric(i interface{}) bool {
 	default:
 		return false
 	}
+}
+
+func extractTags(name string, field reflect.StructField) []string {
+	tagsMap := make([]string, 0)
+	for _, tag := range []string{"json", "form", "query"} {
+		tags := field.Tag
+		if val := tags.Get(tag); val > "" {
+			tf := strings.Split(val, ",")
+			tagsMap = append(tagsMap, tf[0])
+		}
+	}
+	return tagsMap
 }

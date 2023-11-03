@@ -18,6 +18,7 @@ package ursa
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -46,8 +47,72 @@ func (r *objectParseResult) Set(val any) {
 	}
 }
 
-func (r *objectParseResult) Unmarshal(val any) {
-	//TODO: implememnt
+func (r *objectParseResult) Unmarshal(target any) error {
+	if !r.valid {
+		return errors.New("cannot unmarshal invalid value")
+	}
+
+	vo := reflect.ValueOf(target)
+	if !vo.IsValid() {
+		return errors.New("invalid target")
+	}
+
+	if vo.Kind() == reflect.Ptr {
+		vo = reflect.Indirect(vo)
+	}
+
+	switch vo.Kind() {
+	case reflect.Struct:
+		return r.unmarshalToStruct(target)
+	case reflect.Map:
+		return r.unmarshalToMap(target.(map[string]interface{}))
+	default:
+		return errors.New("invalid target")
+	}
+}
+
+func (r *objectParseResult) unmarshalToStruct(target interface{}) error {
+	vo := reflect.Indirect(reflect.ValueOf(target))
+	to := vo.Type()
+
+	for i := 0; i < vo.NumField(); i++ {
+		field := vo.Field(i)
+		if field.CanSet() {
+			fieldName := to.Field(i).Name
+
+			sourceFieldName := fieldName
+			if _, ok := r.value[sourceFieldName]; !ok {
+				sf, _ := reflect.TypeOf(target).Elem().FieldByName(fieldName)
+				tags := extractTags(fieldName, sf)
+				if len(tags) > 0 {
+					sourceFieldName = tags[0]
+				}
+			}
+
+			if _, ok := r.value[sourceFieldName]; !ok {
+				continue
+			}
+
+			if field.Kind() == reflect.Struct {
+				if res, ok := r.value[sourceFieldName].Get().(*objectParseResult); ok {
+					if err := res.Unmarshal(field.Addr().Interface()); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			field.Set(reflect.ValueOf(r.GetField(sourceFieldName).Get()))
+		}
+	}
+
+	return nil
+}
+
+func (r *objectParseResult) unmarshalToMap(target map[string]interface{}) error {
+	for k, v := range r.value {
+		target[k] = v.Get()
+	}
+	return nil
 }
 
 func (o *objectParseResult) GetField(field string) *parseResult[any] {
