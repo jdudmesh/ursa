@@ -44,6 +44,7 @@ type genericParseResult[T any] interface {
 	Errors() []*parseError
 	Get() T
 	Set(val T)
+	Append(valid bool, msg string, inner ...error)
 }
 
 type genericValidatorOptReceiver interface {
@@ -85,6 +86,11 @@ func (r *parseResult[T]) Get() T {
 
 func (r *parseResult[T]) Set(val T) {
 	r.value = val
+}
+
+func (r *parseResult[T]) Append(valid bool, msg string, inner ...error) {
+	r.valid = valid
+	r.errors = append(r.errors, &parseError{message: msg, inner: inner})
 }
 
 func (e *parseError) Inner() []error {
@@ -303,7 +309,7 @@ func isNumeric(i interface{}) bool {
 }
 
 func extractTags(name string, field reflect.StructField) []string {
-	tagsMap := make([]string, 0)
+	tagsMap := []string{name}
 	for _, tag := range []string{"json", "form", "query"} {
 		tags := field.Tag
 		if val := tags.Get(tag); val > "" {

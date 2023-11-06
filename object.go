@@ -24,17 +24,29 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+type ObjectParseResult interface {
+	genericParseResult[map[string]*parseResult[any]]
+	IsFieldValid(field string) bool
+	GetField(field string) *parseResult[any]
+	GetString(field string) string
+	GetInt(field string) int
+}
+
 type objectValidatorOpt func(o *objectValidator) error
 type objectMultipartFileHandler func(name string, file *multipart.FileHeader) error
+type objectRefinerFunc func(res ObjectParseResult)
 
 type objectValidator struct {
+	fields               map[string]reflect.Type
 	validators           map[string]genericValidator[any]
+	refiners             []objectRefinerFunc
 	maxBodySize          int64
 	multipartFileHandler objectMultipartFileHandler
 	err                  error
@@ -44,10 +56,63 @@ type objectParseResult struct {
 	parseResult[map[string]*parseResult[any]]
 }
 
-func (r *objectParseResult) Set(val any) {
+func (r *objectParseResult) set(val any) {
 	if val, ok := val.(map[string]*parseResult[any]); ok {
 		r.value = val
 	}
+}
+
+func (o *objectParseResult) GetField(field string) *parseResult[any] {
+	return o.value[field]
+}
+
+func (o *objectParseResult) GetString(field string) string {
+	if !o.IsFieldValid(field) {
+		return ""
+	}
+	val := o.value[field].Get()
+	if val == nil {
+		return ""
+	}
+	vo := reflect.ValueOf(val)
+	switch vo.Kind() {
+	case reflect.String:
+		return vo.String()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatInt(vo.Int(), 10)
+	case reflect.Float32, reflect.Float64:
+		return strconv.FormatFloat(vo.Float(), 'f', -1, 64)
+	}
+	return o.value[field].Get().(string)
+}
+
+func (o *objectParseResult) GetInt(field string) int {
+	if !o.IsFieldValid(field) {
+		return 0
+	}
+	val := o.value[field].Get()
+	if val == nil {
+		return 0
+	}
+	vo := reflect.ValueOf(val)
+	switch vo.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		return int(vo.Int())
+	case reflect.String:
+		i, err := strconv.ParseInt(vo.String(), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return int(i)
+	}
+	return 0
+}
+
+func (r *objectParseResult) IsFieldValid(field string) bool {
+	if _, ok := r.value[field]; !ok {
+		return false
+	}
+	return r.value[field].Valid()
 }
 
 func (r *objectParseResult) Unmarshal(target any) error {
@@ -83,28 +148,22 @@ func (r *objectParseResult) unmarshalToStruct(target interface{}) error {
 		if field.CanSet() {
 			fieldName := to.Field(i).Name
 
-			sourceFieldName := fieldName
-			if _, ok := r.value[sourceFieldName]; !ok {
-				sf, _ := reflect.TypeOf(target).Elem().FieldByName(fieldName)
-				tags := extractTags(fieldName, sf)
-				if len(tags) > 0 {
-					sourceFieldName = tags[0]
+			sf, _ := reflect.TypeOf(target).Elem().FieldByName(fieldName)
+			for _, sourceFieldName := range extractTags(fieldName, sf) {
+				if _, ok := r.value[sourceFieldName]; !ok {
+					continue
 				}
-			}
-
-			if _, ok := r.value[sourceFieldName]; !ok {
-				continue
-			}
-
-			if field.Kind() == reflect.Struct {
-				if res, ok := r.value[sourceFieldName].Get().(*objectParseResult); ok {
-					if err := res.Unmarshal(field.Addr().Interface()); err != nil {
-						return err
+				if field.Kind() == reflect.Struct {
+					if res, ok := r.value[sourceFieldName].Get().(*objectParseResult); ok {
+						if err := res.Unmarshal(field.Addr().Interface()); err != nil {
+							return err
+						}
 					}
+					continue
 				}
-				continue
+				field.Set(reflect.ValueOf(r.GetField(sourceFieldName).Get()))
+				break
 			}
-			field.Set(reflect.ValueOf(r.GetField(sourceFieldName).Get()))
 		}
 	}
 
@@ -118,13 +177,11 @@ func (r *objectParseResult) unmarshalToMap(target map[string]interface{}) error 
 	return nil
 }
 
-func (o *objectParseResult) GetField(field string) *parseResult[any] {
-	return o.value[field]
-}
-
 func Object(opts ...any) *objectValidator {
 	v := &objectValidator{
+		fields:      make(map[string]reflect.Type),
 		validators:  make(map[string]genericValidator[interface{}]),
+		refiners:    make([]objectRefinerFunc, 0),
 		maxBodySize: 1024 * 1024 * 10,
 	}
 	for _, opt := range opts {
@@ -179,6 +236,12 @@ func (o *objectValidator) Parse(val any, opts ...parseOpt[any]) *objectParseResu
 		parseRes.errors = append(parseRes.errors, fieldResult.errors...)
 		if !fieldResult.Valid() {
 			parseRes.valid = false
+		}
+	}
+
+	if parseRes.valid {
+		for _, refiner := range o.refiners {
+			refiner(parseRes)
 		}
 	}
 
@@ -343,78 +406,91 @@ func (o *objectValidator) readForm(form url.Values) map[string]interface{} {
 
 func (o *objectValidator) String(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[string](opts...)
+	o.fields[name] = reflect.TypeOf("")
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[int](opts...)
+	o.fields[name] = reflect.TypeOf(int(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int16(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[int16](opts...)
+	o.fields[name] = reflect.TypeOf(int16(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int32(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[int32](opts...)
+	o.fields[name] = reflect.TypeOf(int32(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int64(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[int64](opts...)
+	o.fields[name] = reflect.TypeOf(int64(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[uint](opts...)
+	o.fields[name] = reflect.TypeOf(uint(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint16(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[uint16](opts...)
+	o.fields[name] = reflect.TypeOf(uint16(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint32(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[uint32](opts...)
+	o.fields[name] = reflect.TypeOf(uint32(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint64(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[uint64](opts...)
+	o.fields[name] = reflect.TypeOf(uint64(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Float32(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[float32](opts...)
+	o.fields[name] = reflect.TypeOf(float32(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Float64(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[float64](opts...)
+	o.fields[name] = reflect.TypeOf(float64(0))
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Time(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[time.Time](opts...)
+	o.fields[name] = reflect.TypeOf(time.Time{})
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) UUID(name string, opts ...any) *objectValidator {
 	fv := validatorWrapperFactory[uuid.UUID](opts...)
+	o.fields[name] = reflect.TypeOf(uuid.UUID{})
 	o.validators[name] = fv
 	return o
 }
@@ -422,8 +498,76 @@ func (o *objectValidator) UUID(name string, opts ...any) *objectValidator {
 func (o *objectValidator) Object(name string, opts ...any) *objectValidator {
 	fv := Object(opts...)
 	wrapper := &objectValidatorWrapper{validator: fv}
+	o.fields[name] = reflect.TypeOf(nil) //TODO: think of a better type to go here
 	o.validators[name] = wrapper
 	return o
+}
+
+func (o *objectValidator) Refine(fn objectRefinerFunc) *objectValidator {
+	o.refiners = append(o.refiners, fn)
+	return o
+}
+
+func (o *objectValidator) From(valid bool, state any) (*objectParseResult, error) {
+	res := &objectParseResult{
+		parseResult: parseResult[map[string]*parseResult[any]]{
+			valid:  valid,
+			errors: make([]*parseError, 0),
+			value:  make(map[string]*parseResult[any]),
+		},
+	}
+	vo := reflect.ValueOf(state)
+	if !vo.IsValid() {
+		return nil, errors.New("invalid state")
+	}
+
+	if vo.Kind() == reflect.Ptr {
+		if vo.IsNil() {
+			return nil, errors.New("invalid state: nil pointer")
+		}
+		vo = reflect.Indirect(vo)
+	}
+
+	switch vo.Kind() {
+	case reflect.Struct:
+		o.resultFromStruct(valid, state, res)
+	case reflect.Map:
+		o.resultFromMap(valid, state, res)
+	}
+
+	return res, nil
+}
+
+func (o *objectValidator) resultFromMap(valid bool, state any, res *objectParseResult) error {
+	vo := reflect.ValueOf(state)
+	for _, key := range vo.MapKeys() {
+		if _, ok := o.fields[key.String()]; !ok {
+			continue
+		}
+		res.value[key.String()] = &parseResult[any]{value: vo.MapIndex(key).Interface(), valid: valid}
+	}
+	return nil
+}
+
+func (o *objectValidator) resultFromStruct(valid bool, state any, res *objectParseResult) error {
+	vo := reflect.Indirect(reflect.ValueOf(state))
+	to := vo.Type()
+
+	for i := 0; i < vo.NumField(); i++ {
+		field := vo.Field(i)
+		fieldName := to.Field(i).Name
+
+		sf, _ := reflect.TypeOf(state).Elem().FieldByName(fieldName)
+		for _, sourceFieldName := range extractTags(fieldName, sf) {
+			if _, ok := o.fields[sourceFieldName]; !ok {
+				continue
+			}
+			res.value[sourceFieldName] = &parseResult[any]{value: field.Interface(), valid: valid}
+			break
+		}
+	}
+
+	return nil
 }
 
 type validatorWrapper[T any] struct {
