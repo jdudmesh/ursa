@@ -71,10 +71,10 @@ if !result.Valid() {
 // ursa wil check tags to find field names
 type SignupParams struct {
   Plan            string `json:"plan" form:"plan" query:"plan"`
-	Name            string `json:"name" form:"name" query:"name"`
-	Email           string `json:"email" form:"email" query:"email"`
-	Password        string `json:"password" form:"password" query:"password"`
-	ConfirmPassword string `json:"password2" form:"password2" query:"password2"`
+  Name            string `json:"name" form:"name" query:"name"`
+  Email           string `json:"email" form:"email" query:"email"`
+  Password        string `json:"password" form:"password" query:"password"`
+  ConfirmPassword string `json:"password2" form:"password2" query:"password2"`
 }
 
 // define a schema
@@ -86,23 +86,26 @@ var signupSchema = u.Object().
   String("password2", u.MinLength(8, "The password and confirmation do not match")).
   Refine(func(res u.ObjectParseResult) {
     if res.GetString("password") != res.GetString("password2") {
-      res.Append(false, "The password and conformation do not match", errors.New("password mismatch"))
+      res.Append(false, "The password and confirmation do not match", errors.New("password mismatch"))
     }
   })
 
 http.HandleFunc("/signup", func(w http.ResponseWriter, r *http.Request) {
-  signupParams := signupSchema.Parse(r)
-  if signupParams.Valid() {
-    	params := &model.SignupParams{}
-			signupParams.Unmarshal(params)
-			user, err := svc.CreateUser(params)
-      if err == nil {
-        // e.g. marshal user
-        w.Write(...)
-        return
-      }
-  }
 
+  signupParams := signupSchema.Parse(r)
+
+  if signupParams.Valid() {
+
+    params := &model.SignupParams{}
+    signupParams.Unmarshal(params)
+
+    user, err := svc.CreateUser(params)
+    if err == nil {
+      // e.g. marshal user
+      w.Write(...)
+      return
+    }
+  }
   w.Write(...)
 })
 
