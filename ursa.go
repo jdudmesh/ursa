@@ -22,15 +22,16 @@ import (
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // type parseOpt[T any] func(res *genericParseResult[T]) error
-type parseOpt[T any] func(val T) *parseError
+type parseOpt[T any] func(val *T) *parseError
 type transformer[T any] func(val any) (T, error)
 
 type validator[T any] struct {
-	transformerFn transformer[T]
-	options       []parseOpt[T]
-	defaultValue  *T
-	required      bool
-	err           error
+	transformerFn   transformer[T]
+	options         []parseOpt[T]
+	defaultValue    *T
+	required        bool
+	requiredMessage string
+	err             error
 }
 
 type genericValidator[T any] interface {
@@ -51,7 +52,7 @@ type genericValidatorOptReceiver interface {
 	hasTransformer() bool
 	setTransformer(fn transformer[any])
 	setDefault(val any)
-	setRequired()
+	setRequired(message ...string)
 }
 
 type validatorWithOpts[T any] interface {
@@ -113,42 +114,36 @@ var InvalidValidatorStateError = &parseError{
 	message: "invalid type",
 }
 
-var RequiredPropertyMissingError = &parseError{
-	message: "missing required property",
-}
-
 var MissingTransformerError = &parseError{
 	message: "missing property transformer",
 }
 
 func (v *validator[T]) Parse(val any, opts ...parseOpt[T]) genericParseResult[T] {
-	res := &parseResult[T]{}
+	res := &parseResult[T]{valid: true}
 	if v.err != nil {
+		res.valid = false
 		res.errors = []*parseError{InvalidValidatorStateError}
 		return res
 	}
 
 	typedVal, err := v.convert(val)
 	if err != nil {
+		res.valid = false
 		res.errors = []*parseError{err}
 		return res
 	}
 
-	if typedVal == nil {
-		res.valid = true
-		return res
-	}
-
 	for _, opt := range v.options {
-		err := opt(*typedVal)
+		err := opt(typedVal)
 		if err != nil {
+			res.valid = false
 			res.errors = append(res.errors, err)
 		}
 	}
 
 	res.valid = len(res.errors) == 0
-	if res.valid {
-		res.Set(*typedVal)
+	if res.valid && typedVal != nil {
+		res.value = *typedVal
 	}
 
 	return res
@@ -168,7 +163,7 @@ func (v *validator[T]) convert(val any) (*T, *parseError) {
 				return v.convert(v.defaultValue)
 			}
 			if v.required {
-				return nil, RequiredPropertyMissingError
+				return nil, &parseError{message: v.requiredMessage}
 			}
 			return nil, nil
 		}
@@ -250,8 +245,13 @@ func (b *validator[T]) setDefault(val any) {
 	b.defaultValue = &d
 }
 
-func (b *validator[T]) setRequired() {
+func (b *validator[T]) setRequired(message ...string) {
 	b.required = true
+	if len(message) > 0 {
+		b.requiredMessage = message[0]
+	} else {
+		b.requiredMessage = "missing required property"
+	}
 }
 
 func (b *validator[T]) Error() error {
@@ -270,14 +270,14 @@ func WithDefault(val any) genericValidatorOpt {
 	}
 }
 
-func Required() genericValidatorOpt {
+func Required(message ...string) genericValidatorOpt {
 	return func(v genericValidatorOptReceiver) error {
-		v.setRequired()
+		v.setRequired(message...)
 		return nil
 	}
 }
 
-func newGenerator[T any](opts ...any) validatorWithOpts[T] {
+func validatorFactory[T any](opts ...any) validatorWithOpts[T] {
 	v := &validator[T]{
 		options: make([]parseOpt[T], 0, len(opts)),
 	}

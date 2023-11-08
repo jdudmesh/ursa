@@ -24,12 +24,15 @@ import (
 type stringValidatorOpt = parseOpt[string]
 
 func String(opts ...any) genericValidator[string] {
-	return newGenerator[string](opts...)
+	return validatorFactory[string](opts...)
 }
 
 func MinLength(min int, message ...string) stringValidatorOpt {
-	return func(val string) *parseError {
-		if len(val) < min {
+	return func(val *string) *parseError {
+		if val == nil {
+			return nil
+		}
+		if len(*val) < min {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
@@ -40,8 +43,11 @@ func MinLength(min int, message ...string) stringValidatorOpt {
 }
 
 func MaxLength(max int, message ...string) stringValidatorOpt {
-	return func(val string) *parseError {
-		if len(val) > max {
+	return func(val *string) *parseError {
+		if val == nil {
+			return nil
+		}
+		if len(*val) > max {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
@@ -53,11 +59,14 @@ func MaxLength(max int, message ...string) stringValidatorOpt {
 
 func Matches(patt string, message ...string) stringValidatorOpt {
 	re, err := regexp.Compile(patt)
-	return func(val string) *parseError {
+	return func(val *string) *parseError {
+		if val == nil {
+			return nil
+		}
 		if err != nil {
 			return &parseError{message: "invalid regexp pattern", inner: []error{err}}
 		}
-		if !re.MatchString(val) {
+		if !re.MatchString(*val) {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
 			}
@@ -67,9 +76,12 @@ func Matches(patt string, message ...string) stringValidatorOpt {
 	}
 }
 
-func Email(patt string, message ...string) stringValidatorOpt {
-	return func(val string) *parseError {
-		_, err := mail.ParseAddress(val)
+func Email(message ...string) stringValidatorOpt {
+	return func(val *string) *parseError {
+		if val == nil {
+			return nil
+		}
+		_, err := mail.ParseAddress(*val)
 		if err != nil {
 			if len(message) > 0 {
 				return &parseError{message: message[0], inner: []error{err}}
@@ -81,9 +93,12 @@ func Email(patt string, message ...string) stringValidatorOpt {
 }
 
 func Enum(values ...string) stringValidatorOpt {
-	return func(val string) *parseError {
+	return func(val *string) *parseError {
+		if val == nil {
+			return nil
+		}
 		for _, v := range values {
-			if v == val {
+			if v == *val {
 				return nil
 			}
 		}

@@ -87,12 +87,12 @@ func TestStringRequired(t *testing.T) {
 		u.MinLength(5, "String should be at least 5 characters"),
 		u.MaxLength(10),
 		u.Matches("^[0-9]*$"),
-		u.Required())
+		u.Required("required"))
 
 	t.Run("nil", func(t *testing.T) {
 		errs := v.Parse(nil).Errors()
 		assert.Equal(1, len(errs))
-		assert.ErrorIs(errs[0], u.RequiredPropertyMissingError)
+		assert.Equal(errs[0].Error(), "required")
 	})
 }
 

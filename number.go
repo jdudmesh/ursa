@@ -30,71 +30,77 @@ type number interface {
 
 type numberValidatorOpt func(val float64) *parseError
 
-func optWrapper[T any](fn numberValidatorOpt) parseOpt[T] {
-	return func(val T) *parseError {
+// to make things simpler all numbers are coerced to float64 before invoking the validator
+func numericOptWrapper[T any](fn numberValidatorOpt) parseOpt[T] {
+	return func(val *T) *parseError {
+		if val == nil {
+			return nil
+		}
 		var zero float64
 		zeroType := reflect.TypeOf(zero)
-		if reflect.TypeOf(val).ConvertibleTo(zeroType) {
-			n := reflect.ValueOf(val).Convert(zeroType).Interface().(float64)
+		v := *val
+		vo := reflect.ValueOf(v)
+		if reflect.TypeOf(v).ConvertibleTo(zeroType) {
+			n := vo.Convert(zeroType).Interface().(float64)
 			return fn(n)
 		}
 		return InvalidTypeError
 	}
 }
 
-func numberValidator[T number](opts ...any) genericValidator[T] {
+func numericValidatorFactory[T number](opts ...any) validatorWithOpts[T] {
 	wrappedOpts := make([]any, len(opts))
 	for i, opt := range opts {
 		if fn, ok := opt.(numberValidatorOpt); ok {
-			wrappedOpts[i] = optWrapper[T](fn)
+			wrappedOpts[i] = numericOptWrapper[T](fn)
 		} else {
 			wrappedOpts[i] = opt
 		}
 	}
 
-	v := newGenerator[T](wrappedOpts...)
+	v := validatorFactory[T](wrappedOpts...)
 
 	return v
 }
 
 func Int(opts ...any) genericValidator[int] {
-	return numberValidator[int](opts...)
+	return numericValidatorFactory[int](opts...)
 }
 
 func Int16(opts ...any) genericValidator[int16] {
-	return numberValidator[int16](opts...)
+	return numericValidatorFactory[int16](opts...)
 }
 
 func Int32(opts ...any) genericValidator[int32] {
-	return numberValidator[int32](opts...)
+	return numericValidatorFactory[int32](opts...)
 }
 
 func Int64(opts ...any) genericValidator[int64] {
-	return numberValidator[int64](opts...)
+	return numericValidatorFactory[int64](opts...)
 }
 
 func UInt(opts ...any) genericValidator[uint] {
-	return numberValidator[uint](opts...)
+	return numericValidatorFactory[uint](opts...)
 }
 
 func UInt16(opts ...any) genericValidator[uint16] {
-	return numberValidator[uint16](opts...)
+	return numericValidatorFactory[uint16](opts...)
 }
 
 func UInt32(opts ...any) genericValidator[uint32] {
-	return numberValidator[uint32](opts...)
+	return numericValidatorFactory[uint32](opts...)
 }
 
 func UInt64(opts ...any) genericValidator[uint64] {
-	return numberValidator[uint64](opts...)
+	return numericValidatorFactory[uint64](opts...)
 }
 
 func Float32(opts ...any) genericValidator[float32] {
-	return numberValidator[float32](opts...)
+	return numericValidatorFactory[float32](opts...)
 }
 
 func Float64(opts ...any) genericValidator[float64] {
-	return numberValidator[float64](opts...)
+	return numericValidatorFactory[float64](opts...)
 }
 
 func Min(min float64, message ...string) numberValidatorOpt {

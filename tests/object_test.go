@@ -32,7 +32,7 @@ func TestObject(t *testing.T) {
 
 	v := u.Object().
 		String("Name", u.MinLength(5, "String should be at least 5 characters"), u.Required()).
-		Int("Count")
+		Int("Count", u.Min(5, "Number should be >= 5"))
 
 	res := v.Parse(&struct {
 		Name  string

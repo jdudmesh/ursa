@@ -35,9 +35,15 @@ import (
 type ObjectParseResult interface {
 	genericParseResult[map[string]*parseResult[any]]
 	IsFieldValid(field string) bool
+	GetError(field string) string
 	GetField(field string) *parseResult[any]
 	GetString(field string) string
 	GetInt(field string) int
+}
+
+type File struct {
+	Name   string
+	Header *multipart.FileHeader
 }
 
 type objectValidatorOpt func(o *objectValidator) error
@@ -108,6 +114,20 @@ func (o *objectParseResult) GetInt(field string) int {
 		return int(i)
 	}
 	return 0
+}
+
+func (r *objectParseResult) GetError(field string) string {
+	if _, ok := r.value[field]; !ok {
+		return ""
+	}
+	if r.value[field].valid {
+		return ""
+	}
+	errors := make([]string, len(r.value[field].errors))
+	for i, err := range r.value[field].errors {
+		errors[i] = err.Error()
+	}
+	return strings.Join(errors, ", ")
 }
 
 func (r *objectParseResult) IsFieldValid(field string) bool {
@@ -411,91 +431,98 @@ func (o *objectValidator) readForm(form url.Values) map[string]interface{} {
 }
 
 func (o *objectValidator) String(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[string](opts...)
+	fv := &validatorWrapper[string]{validator: validatorFactory[string](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[int](opts...)
+	fv := &validatorWrapper[int]{validator: numericValidatorFactory[int](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int16(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[int16](opts...)
+	fv := &validatorWrapper[int16]{validator: numericValidatorFactory[int16](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int32(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[int32](opts...)
+	fv := &validatorWrapper[int32]{validator: numericValidatorFactory[int32](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Int64(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[int64](opts...)
+	fv := &validatorWrapper[int64]{validator: numericValidatorFactory[int64](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[uint](opts...)
+	fv := &validatorWrapper[uint]{validator: numericValidatorFactory[uint](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint16(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[uint16](opts...)
+	fv := &validatorWrapper[uint16]{validator: numericValidatorFactory[uint16](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint32(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[uint32](opts...)
+	fv := &validatorWrapper[uint32]{validator: numericValidatorFactory[uint32](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Uint64(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[uint64](opts...)
+	fv := &validatorWrapper[uint64]{validator: numericValidatorFactory[uint64](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Float32(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[float32](opts...)
+	fv := &validatorWrapper[float32]{validator: numericValidatorFactory[float32](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Float64(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[float64](opts...)
+	fv := &validatorWrapper[float64]{validator: numericValidatorFactory[float64](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) Time(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[time.Time](opts...)
+	fv := &validatorWrapper[time.Time]{validator: validatorFactory[time.Time](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
 }
 
 func (o *objectValidator) UUID(name string, opts ...any) *objectValidator {
-	fv := validatorWrapperFactory[uuid.UUID](opts...)
+	fv := &validatorWrapper[uuid.UUID]{validator: validatorFactory[uuid.UUID](opts...)}
+	o.fields = append(o.fields, name)
+	o.validators[name] = fv
+	return o
+}
+
+func (o *objectValidator) Bool(name string, opts ...any) *objectValidator {
+	fv := &validatorWrapper[bool]{validator: validatorFactory[bool](opts...)}
 	o.fields = append(o.fields, name)
 	o.validators[name] = fv
 	return o
@@ -581,8 +608,10 @@ type validatorWrapper[T any] struct {
 }
 
 func parseOptWrapper[T any](fn parseOpt[interface{}]) parseOpt[T] {
-	return func(val T) *parseError {
-		res := fn(val)
+	return func(val *T) *parseError {
+		var v interface{}
+		v = val
+		res := fn(&v)
 		return res
 	}
 }
@@ -603,10 +632,6 @@ func (v *validatorWrapper[T]) Error() error {
 
 func (v *validatorWrapper[T]) Type() reflect.Type {
 	return v.validator.Type()
-}
-
-func validatorWrapperFactory[T any](opts ...any) genericValidator[interface{}] {
-	return &validatorWrapper[T]{validator: newGenerator[T](opts...)}
 }
 
 type objectValidatorWrapper struct {

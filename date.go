@@ -26,7 +26,7 @@ var ErrMissingDateParser = &parseError{message: "missing date parser"}
 type timeValidatorOpt = parseOpt[time.Time]
 
 func Time(opts ...any) genericValidator[time.Time] {
-	return newGenerator[time.Time](opts...)
+	return validatorFactory[time.Time](opts...)
 }
 
 func coerceToTime(layout string, val any) (time.Time, error) {
@@ -51,7 +51,10 @@ func WithTimeFormat(layout string) genericValidatorOpt {
 }
 
 func NotBefore(datum time.Time, message ...string) timeValidatorOpt {
-	return func(val time.Time) *parseError {
+	return func(val *time.Time) *parseError {
+		if val == nil {
+			return nil
+		}
 		if val.Before(datum) {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}
@@ -63,7 +66,10 @@ func NotBefore(datum time.Time, message ...string) timeValidatorOpt {
 }
 
 func NotAfter(datum time.Time, message ...string) timeValidatorOpt {
-	return func(val time.Time) *parseError {
+	return func(val *time.Time) *parseError {
+		if val == nil {
+			return nil
+		}
 		if val.After(datum) {
 			if len(message) > 0 {
 				return &parseError{message: message[0]}

@@ -25,7 +25,7 @@ import (
 type uuidValidatorOpt = parseOpt[uuid.UUID]
 
 func UUID(opts ...any) genericValidator[uuid.UUID] {
-	v := newGenerator[uuid.UUID](opts...)
+	v := validatorFactory[uuid.UUID](opts...)
 	v.setTransformer(func(val any) (any, error) {
 		return coerceToUUID(val)
 	})
@@ -45,7 +45,7 @@ func coerceToUUID(val any) (uuid.UUID, error) {
 }
 
 func NonNullUUID(message ...string) uuidValidatorOpt {
-	return func(val uuid.UUID) *parseError {
+	return func(val *uuid.UUID) *parseError {
 		for _, v := range val {
 			if v > 0 {
 				return nil
