@@ -142,7 +142,7 @@ func (v *validator[T]) Parse(val any, opts ...parseOpt[T]) genericParseResult[T]
 	}
 
 	res.valid = len(res.errors) == 0
-	if res.valid && typedVal != nil {
+	if typedVal != nil {
 		res.value = *typedVal
 	}
 

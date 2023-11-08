@@ -73,9 +73,6 @@ func (o *objectParseResult) GetField(field string) *parseResult[any] {
 }
 
 func (o *objectParseResult) GetString(field string) string {
-	if !o.IsFieldValid(field) {
-		return ""
-	}
 	val := o.value[field].Get()
 	if val == nil {
 		return ""
@@ -263,10 +260,8 @@ func (o *objectValidator) Parse(val any, opts ...parseOpt[any]) *objectParseResu
 		}
 	}
 
-	if parseRes.valid {
-		for _, refiner := range o.refiners {
-			refiner(parseRes)
-		}
+	for _, refiner := range o.refiners {
+		refiner(parseRes)
 	}
 
 	return parseRes
