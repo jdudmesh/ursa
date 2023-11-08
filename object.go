@@ -42,7 +42,6 @@ type ObjectParseResult interface {
 }
 
 type File struct {
-	Name   string
 	Header *multipart.FileHeader
 }
 
@@ -51,12 +50,11 @@ type objectMultipartFileHandler func(name string, file *multipart.FileHeader) er
 type objectRefinerFunc func(res ObjectParseResult)
 
 type objectValidator struct {
-	fields               []string // use this to preserve order
-	validators           map[string]genericValidator[any]
-	refiners             []objectRefinerFunc
-	maxBodySize          int64
-	multipartFileHandler objectMultipartFileHandler
-	err                  error
+	fields      []string // use this to preserve order
+	validators  map[string]genericValidator[any]
+	refiners    []objectRefinerFunc
+	maxBodySize int64
+	err         error
 }
 
 type objectParseResult struct {
@@ -374,21 +372,17 @@ func (o *objectValidator) parseRequest(req *http.Request, opts ...parseOpt[any])
 			}
 		}
 
-		if o.multipartFileHandler != nil {
-			for name, fileHeaders := range req.MultipartForm.File {
-				for _, fileHeader := range fileHeaders {
-					if err := o.multipartFileHandler(name, fileHeader); err != nil {
-						return &objectParseResult{
-							parseResult: parseResult[map[string]*parseResult[any]]{
-								errors: []*parseError{{message: "handling file", inner: []error{err}}},
-							},
-						}
-					}
-				}
+		formData := o.readForm(req.Form)
+		for name, fileHeaders := range req.MultipartForm.File {
+			if _, ok := formData[name]; !ok {
+				formData[name] = make([]File, 0, len(fileHeaders))
+			}
+			for _, fileHeader := range fileHeaders {
+				formData[name] = append(formData[name].([]File), File{Header: fileHeader})
 			}
 		}
 
-		return o.Parse(o.readForm(req.Form), opts...)
+		return o.Parse(formData, opts...)
 
 	default:
 		if req.Method == "GET" {
@@ -536,6 +530,13 @@ func (o *objectValidator) Object(name string, opts ...any) *objectValidator {
 	return o
 }
 
+func (o *objectValidator) File(name string, opts ...any) *objectValidator {
+	fv := &validatorWrapper[[]File]{validator: validatorFactory[[]File](opts...)}
+	o.fields = append(o.fields, name)
+	o.validators[name] = fv
+	return o
+}
+
 func (o *objectValidator) Refine(fn objectRefinerFunc) *objectValidator {
 	o.refiners = append(o.refiners, fn)
 	return o
@@ -659,9 +660,35 @@ func WithMaxBodySize(size int64) objectValidatorOpt {
 	}
 }
 
-func WithFileHandler(handler objectMultipartFileHandler) objectValidatorOpt {
-	return func(o *objectValidator) error {
-		o.multipartFileHandler = handler
+func MaxFileCount(count int, message ...string) parseOpt[[]File] {
+	return func(val *[]File) *parseError {
+		if val == nil {
+			return nil
+		}
+		if len(*val) > count {
+			if len(message) > 0 {
+				return &parseError{message: message[0]}
+			}
+			return &parseError{message: "too many files"}
+		}
+		return nil
+	}
+}
+
+func MaxFileSize(size int, message ...string) parseOpt[[]File] {
+	return func(val *[]File) *parseError {
+		if val == nil {
+			return nil
+		}
+		files := *val
+		for _, file := range files {
+			if file.Header.Size > int64(size) {
+				if len(message) > 0 {
+					return &parseError{message: message[0]}
+				}
+				return &parseError{message: "too many files"}
+			}
+		}
 		return nil
 	}
 }

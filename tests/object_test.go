@@ -126,19 +126,10 @@ func TestObjectHTTP(t *testing.T) {
 func TestFileHandler(t *testing.T) {
 	assert := assert.New(t)
 
-	v := u.Object(u.WithMaxBodySize(1000), u.WithFileHandler(func(name string, header *multipart.FileHeader) error {
-		assert.Equal("file", name)
-		assert.Equal("test.txt", header.Filename)
-		file, err := header.Open()
-		assert.NoError(err)
-		buf := new(bytes.Buffer)
-		_, err = buf.ReadFrom(file)
-		assert.NoError(err)
-		assert.Equal("test", buf.String())
-		return nil
-	})).
+	v := u.Object(u.WithMaxBodySize(1000)).
 		String("Name", u.MinLength(5, "String should be at least 5 characters")).
-		Int("Count")
+		Int("Count").
+		File("file", u.MaxFileCount(1), u.MaxFileSize(1000))
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -152,8 +143,21 @@ func TestFileHandler(t *testing.T) {
 	req, _ := http.NewRequest("POST", "http://localhost:8080/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	errs := v.Parse(req).Errors()
-	assert.Equal(0, len(errs))
+	res := v.Parse(req)
+	assert.Equal(0, len(res.Errors()))
+
+	fileProp := res.GetField("file")
+	files := fileProp.Get().([]u.File)
+	assert.Equal(1, len(files))
+	file := files[0]
+
+	assert.Equal("test.txt", file.Header.Filename)
+	fp, err := file.Header.Open()
+	assert.NoError(err)
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(fp)
+	assert.NoError(err)
+	assert.Equal("test", buf.String())
 }
 
 func TestObjectMissingField(t *testing.T) {
