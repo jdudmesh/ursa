@@ -39,6 +39,7 @@ type ObjectParseResult interface {
 	GetField(field string) *parseResult[any]
 	GetString(field string) string
 	GetInt(field string) int
+	GetBool(field string) bool
 }
 
 type File struct {
@@ -90,9 +91,6 @@ func (o *objectParseResult) GetString(field string) string {
 }
 
 func (o *objectParseResult) GetInt(field string) int {
-	if !o.IsFieldValid(field) {
-		return 0
-	}
 	val := o.value[field].Get()
 	if val == nil {
 		return 0
@@ -109,6 +107,35 @@ func (o *objectParseResult) GetInt(field string) int {
 		return int(i)
 	}
 	return 0
+}
+
+func (o *objectParseResult) GetBool(field string) bool {
+	val := o.value[field].Get()
+	if val == nil {
+		return false
+	}
+	vo := reflect.ValueOf(val)
+	switch vo.Kind() {
+	case reflect.Bool:
+		return vo.Bool()
+	case reflect.String:
+		if len(vo.String()) == 0 {
+			return false
+		}
+		b, err := strconv.ParseBool(vo.String())
+		if err != nil {
+			return false
+		}
+		return b
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return vo.Int() != 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return vo.Uint() != 0
+	case reflect.Float32, reflect.Float64:
+		return vo.Float() != 0
+	default:
+		return false
+	}
 }
 
 func (r *objectParseResult) GetError(field string) string {
