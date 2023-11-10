@@ -4,6 +4,7 @@ import (
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"golang.org/x/exp/constraints"
 )
@@ -165,5 +166,13 @@ func coerceToNumber[T number](val any) (T, error) {
 			return T(0), InvalidValueError
 		}
 		return T(floatVal), nil
+	}
+}
+
+func coerceToBool(val string) (bool, error) {
+	if strings.ToLower(val) == "on" {
+		return true, nil
+	} else {
+		return strconv.ParseBool(val)
 	}
 }

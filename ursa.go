@@ -177,6 +177,12 @@ func (v *validator[T]) convert(val any) (*T, *parseError) {
 					return nil, InvalidTypeError
 				}
 			}
+			if reflect.TypeOf(typedVal).Kind() == reflect.Bool && vo.Kind() == reflect.String {
+				val, err = coerceToBool(val.(string))
+				if err != nil {
+					return nil, InvalidTypeError
+				}
+			}
 		} else {
 			val, err = v.transformerFn(val)
 			if err != nil {

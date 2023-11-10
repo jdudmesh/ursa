@@ -40,6 +40,7 @@ type ObjectParseResult interface {
 	GetString(field string) string
 	GetInt(field string) int
 	GetBool(field string) bool
+	Unmarshal(target any) error
 }
 
 type File struct {
