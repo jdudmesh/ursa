@@ -283,13 +283,17 @@ func (o *objectValidator) Parse(val any, opts ...parseOpt[any]) *objectParseResu
 		}
 		parseRes.value[name] = fieldResult
 		parseRes.errors = append(parseRes.errors, fieldResult.errors...)
-		if !fieldResult.Valid() {
-			parseRes.valid = false
-		}
 	}
 
 	for _, refiner := range o.refiners {
 		refiner(parseRes)
+	}
+
+	for _, res := range parseRes.value {
+		if !res.valid {
+			parseRes.valid = false
+			break
+		}
 	}
 
 	return parseRes
