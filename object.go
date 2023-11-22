@@ -35,6 +35,7 @@ import (
 type ObjectParseResult interface {
 	genericParseResult[map[string]*parseResult[any]]
 	IsFieldValid(field string) bool
+	IsAllValid() bool
 	GetError(field string) string
 	GetField(field string) *parseResult[any]
 	GetString(field string) string
