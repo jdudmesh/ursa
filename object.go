@@ -70,6 +70,18 @@ func (r *objectParseResult) set(val any) {
 	}
 }
 
+func (o *objectParseResult) IsAllValid() bool {
+	if !o.valid {
+		return false
+	}
+	for _, res := range o.value {
+		if !res.valid {
+			return false
+		}
+	}
+	return true
+}
+
 func (o *objectParseResult) GetField(field string) *parseResult[any] {
 	return o.value[field]
 }
@@ -157,7 +169,7 @@ func (r *objectParseResult) IsFieldValid(field string) bool {
 	if _, ok := r.value[field]; !ok {
 		return false
 	}
-	return r.value[field].Valid()
+	return r.value[field].IsValid()
 }
 
 func (r *objectParseResult) Unmarshal(target any) error {
@@ -279,7 +291,7 @@ func (o *objectValidator) Parse(val any, opts ...parseOpt[any]) *objectParseResu
 			}
 		} else {
 			res := validator.Parse(fieldVal)
-			fieldResult = &parseResult[interface{}]{valid: res.Valid(), value: res.Get(), errors: res.Errors()}
+			fieldResult = &parseResult[interface{}]{valid: res.IsValid(), value: res.Get(), errors: res.Errors()}
 		}
 		parseRes.value[name] = fieldResult
 		parseRes.errors = append(parseRes.errors, fieldResult.errors...)
@@ -650,7 +662,7 @@ func (v *validatorWrapper[T]) Parse(val any, opts ...parseOpt[interface{}]) gene
 		wrappedOpts[i] = parseOptWrapper[T](opt)
 	}
 	res := v.validator.Parse(val, wrappedOpts...)
-	wrappedRes := &parseResult[interface{}]{valid: res.Valid(), value: res.Get(), errors: res.Errors()}
+	wrappedRes := &parseResult[interface{}]{valid: res.IsValid(), value: res.Get(), errors: res.Errors()}
 	return wrappedRes
 }
 
@@ -668,7 +680,7 @@ type objectValidatorWrapper struct {
 
 func (v *objectValidatorWrapper) Parse(val any, opts ...parseOpt[interface{}]) genericParseResult[interface{}] {
 	res := v.validator.Parse(val, opts...)
-	wrappedRes := &parseResult[interface{}]{valid: res.Valid(), value: res.Get(), errors: res.Errors()}
+	wrappedRes := &parseResult[interface{}]{valid: res.IsAllValid(), value: res.Get(), errors: res.Errors()}
 	return wrappedRes
 }
 

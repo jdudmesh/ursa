@@ -41,7 +41,7 @@ type genericValidator[T any] interface {
 }
 
 type genericParseResult[T any] interface {
-	Valid() bool
+	IsValid() bool
 	Errors() []*parseError
 	Get() T
 	Set(val T)
@@ -73,7 +73,7 @@ type parseError struct {
 	inner   []error
 }
 
-func (r *parseResult[T]) Valid() bool {
+func (r *parseResult[T]) IsValid() bool {
 	return r.valid
 }
 

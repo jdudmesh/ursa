@@ -32,19 +32,19 @@ func TestUUID(t *testing.T) {
 	u := uuid.New()
 
 	res := v.Parse(u)
-	assert.True(res.Valid())
+	assert.True(res.IsValid())
 	assert.Equal(u, res.Get())
 
 	res = v.Parse(u.String())
-	assert.True(res.Valid())
+	assert.True(res.IsValid())
 
 	sz := "not a uuid"
 	res = v.Parse(sz)
-	assert.False(res.Valid())
+	assert.False(res.IsValid())
 
 	//uuid.MustParse("00000000-0000-0000-0000-000000000000")
 	sz = "00000000-0000-0000-0000-000000000000"
 	res = v.Parse(sz)
-	assert.False(res.Valid())
+	assert.False(res.IsValid())
 	assert.Equal("uuid is zero", res.Errors()[0].Error())
 }

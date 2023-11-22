@@ -33,7 +33,7 @@ func TestString(t *testing.T) {
 		u.Matches("^[0-9]*$"))
 
 	res := v.Parse("01234678")
-	assert.True(res.Valid())
+	assert.True(res.IsValid())
 	assert.Equal(0, len(res.Errors()))
 	assert.Equal("01234678", res.Get())
 
@@ -71,12 +71,12 @@ func TestStringPtr(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		testVal := "01234678"
 		res := v.Parse(&testVal)
-		assert.True(res.Valid())
+		assert.True(res.IsValid())
 	})
 
 	t.Run("nil", func(t *testing.T) {
 		res := v.Parse(nil)
-		assert.True(res.Valid())
+		assert.True(res.IsValid())
 	})
 }
 
@@ -108,7 +108,7 @@ func TestStringDefault(t *testing.T) {
 
 	t.Run("nil", func(t *testing.T) {
 		res := v.Parse(nil)
-		assert.True(res.Valid())
+		assert.True(res.IsValid())
 		assert.Equal("01234678", res.Get())
 	})
 }

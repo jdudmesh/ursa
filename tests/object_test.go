@@ -170,7 +170,7 @@ func TestObjectMissingField(t *testing.T) {
 	res := v.Parse(map[string]string{
 		"Name": "abcdefgh",
 	})
-	assert.True(res.Valid())
+	assert.True(res.IsValid())
 	assert.Equal("abcdefgh", res.GetField("Name").Get())
 	assert.Equal(5, res.GetField("Count").Get())
 }
@@ -192,7 +192,7 @@ func TestUnmarshal(t *testing.T) {
 
 	res := v.Parse(data)
 
-	assert.True(t, res.Valid())
+	assert.True(t, res.IsValid())
 
 	t.Run("unpack to map", func(t *testing.T) {
 		tgt := make(map[string]interface{})

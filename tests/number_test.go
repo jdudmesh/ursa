@@ -31,10 +31,10 @@ func TestNumber(t *testing.T) {
 		u.Max(10))
 
 	res := v.Parse(7)
-	assert.Equal(true, res.Valid())
+	assert.Equal(true, res.IsValid())
 
 	res = v.Parse("7")
-	assert.Equal(true, res.Valid())
+	assert.Equal(true, res.IsValid())
 	assert.Equal(7, res.Get())
 
 	errs := v.Parse("ursa").Errors()
